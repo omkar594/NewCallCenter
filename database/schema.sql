@@ -2,6 +2,11 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Drop existing tables if they exist
+DROP TABLE IF EXISTS ivr_lookup_rows CASCADE;
+DROP TABLE IF EXISTS ivr_lookup_tables CASCADE;
+DROP TABLE IF EXISTS ivr_node_branches CASCADE;
+DROP TABLE IF EXISTS ivr_nodes CASCADE;
+DROP TABLE IF EXISTS ivr_flows CASCADE;
 DROP TABLE IF EXISTS ps_endpoints CASCADE;
 DROP TABLE IF EXISTS ps_auths CASCADE;
 DROP TABLE IF EXISTS ps_aors CASCADE;
@@ -329,4 +334,64 @@ CREATE TABLE gateway_port_telemetry (
 
 ALTER TABLE voice_campaigns ENABLE ROW LEVEL SECURITY;
 CREATE POLICY voice_campaigns_isolation ON voice_campaigns FOR ALL USING (rls_tenant_check(tenant_id));
+
+-- 16. Workstream 8: client-configurable IVR flow engine data model. Kept identical to
+-- server.js's initSchema() - see that function's comment for the same rule that applies to
+-- voice_campaigns/campaign_leads above.
+CREATE TABLE ivr_flows (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    is_active BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE ivr_nodes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    flow_id UUID NOT NULL REFERENCES ivr_flows(id) ON DELETE CASCADE,
+    type VARCHAR(30) NOT NULL CHECK (type IN (
+        'play', 'menu', 'collect_input', 'lookup', 'branch',
+        'transfer_queue', 'sms', 'optout', 'amd_check', 'hangup'
+    )),
+    is_start BOOLEAN NOT NULL DEFAULT FALSE,
+    prompt_id VARCHAR(255),
+    config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    next_node_id UUID REFERENCES ivr_nodes(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_ivr_nodes_flow_id ON ivr_nodes(flow_id);
+CREATE UNIQUE INDEX idx_ivr_nodes_one_start_per_flow ON ivr_nodes(flow_id) WHERE is_start = true;
+
+CREATE TABLE ivr_node_branches (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    node_id UUID NOT NULL REFERENCES ivr_nodes(id) ON DELETE CASCADE,
+    match_value VARCHAR(100) NOT NULL,
+    next_node_id UUID NOT NULL REFERENCES ivr_nodes(id) ON DELETE CASCADE,
+    UNIQUE (node_id, match_value)
+);
+CREATE INDEX idx_ivr_node_branches_node_id ON ivr_node_branches(node_id);
+
+CREATE TABLE ivr_lookup_tables (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    key_column VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE ivr_lookup_rows (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    table_id UUID NOT NULL REFERENCES ivr_lookup_tables(id) ON DELETE CASCADE,
+    key_value VARCHAR(255) NOT NULL,
+    data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    UNIQUE (table_id, key_value)
+);
+CREATE INDEX idx_ivr_lookup_rows_table_key ON ivr_lookup_rows(table_id, key_value);
+
+-- Links a campaign to the IVR flow it should run - NULL means an ordinary single-prompt
+-- broadcast campaign (unchanged from before Workstream 8). Added after voice_campaigns above
+-- since it forward-references ivr_flows.
+ALTER TABLE voice_campaigns ADD COLUMN ivr_flow_id UUID REFERENCES ivr_flows(id) ON DELETE SET NULL;
 

@@ -10,6 +10,7 @@ import dotenv from 'dotenv';
 import pool from './config/database.js';
 import redis from './config/redis.js';
 import asteriskService from './services/asteriskService.js';
+import ariService from './services/ariService.js';
 import spamService from './services/spamService.js';
 import routingService from './services/routingService.js';
 import { resyncAllIdleAgents } from './services/queueMembershipService.js';
@@ -21,6 +22,7 @@ import gatewayRoutes from './routes/gateway.js';
 import campaignRoutes from './routes/campaign.js';
 import callRoutes from './routes/call.js';
 import analyticsRoutes from './routes/analytics.js';
+import ivrRoutes from './routes/ivr.js';
 
 // Start Outbound Campaign Queue Worker
 import './bulkCampaignWorker.js';
@@ -29,6 +31,10 @@ import './bulkCampaignWorker.js';
 import './dinstarPoller.js';
 // Workstream 7: records AMD/DTMF dialplan markers onto campaign_leads for reporting.
 import './services/campaignTelemetryListener.js';
+// Workstream 8: client-configurable IVR flow engine - registers ARI StasisStart/StasisEnd
+// listeners. Side-effect import only; the actual ariService.connect() call happens in
+// server.listen()'s callback below, alongside the existing AMI connect.
+import './services/ivrFlowEngine.js';
 
 dotenv.config();
 
@@ -77,6 +83,7 @@ app.use('/api/gateways', gatewayRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/ivr', ivrRoutes);
 
 // Auto-initialize database tables if missing (essential for cloud hosting like Render).
 // Kept in sync with database/schema.sql's voice_campaigns/campaign_leads definitions -
@@ -348,6 +355,78 @@ async function initSchema() {
           prune_on_boot VARCHAR(5),
           qualify_2xx_only VARCHAR(5)
       );
+
+      -- Workstream 8: client-configurable IVR flow engine data model. A flow is a tree of nodes
+      -- interpreted at call time by ivrFlowEngine.js via ARI - see plan Workstream 8 for the full
+      -- node-type list. "tenant" here reuses the existing multi-tenant tenants table rather than
+      -- inventing a parallel per-client concept.
+      CREATE TABLE IF NOT EXISTS ivr_flows (
+          id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          name VARCHAR(255) NOT NULL,
+          version INTEGER NOT NULL DEFAULT 1,
+          is_active BOOLEAN DEFAULT FALSE,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS ivr_nodes (
+          id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          flow_id UUID NOT NULL REFERENCES ivr_flows(id) ON DELETE CASCADE,
+          type VARCHAR(30) NOT NULL CHECK (type IN (
+              'play', 'menu', 'collect_input', 'lookup', 'branch',
+              'transfer_queue', 'sms', 'optout', 'amd_check', 'hangup'
+          )),
+          -- Marks the single node the engine starts a call on. Enforced one-per-flow below
+          -- rather than left implicit, since the engine has no other way to find where to begin.
+          is_start BOOLEAN NOT NULL DEFAULT FALSE,
+          prompt_id VARCHAR(255),
+          config JSONB NOT NULL DEFAULT '{}'::jsonb,
+          next_node_id UUID REFERENCES ivr_nodes(id) ON DELETE SET NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_ivr_nodes_flow_id ON ivr_nodes(flow_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_ivr_nodes_one_start_per_flow
+          ON ivr_nodes(flow_id) WHERE is_start = true;
+
+      -- Branches out of 'menu' (keyed by DTMF digit) and 'lookup'/'branch' nodes (keyed by a
+      -- result like 'found'/'not_found'/'error'). match_value is a plain string in both cases -
+      -- the engine interprets it according to the source node's type.
+      CREATE TABLE IF NOT EXISTS ivr_node_branches (
+          id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          node_id UUID NOT NULL REFERENCES ivr_nodes(id) ON DELETE CASCADE,
+          match_value VARCHAR(100) NOT NULL,
+          next_node_id UUID NOT NULL REFERENCES ivr_nodes(id) ON DELETE CASCADE,
+          UNIQUE (node_id, match_value)
+      );
+      CREATE INDEX IF NOT EXISTS idx_ivr_node_branches_node_id ON ivr_node_branches(node_id);
+
+      -- Client-hosted lookup tables (CSV-uploaded) for 'lookup' nodes whose source_type is
+      -- 'table' rather than a client-owned webhook.
+      CREATE TABLE IF NOT EXISTS ivr_lookup_tables (
+          id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          name VARCHAR(255) NOT NULL,
+          key_column VARCHAR(100) NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS ivr_lookup_rows (
+          id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          table_id UUID NOT NULL REFERENCES ivr_lookup_tables(id) ON DELETE CASCADE,
+          key_value VARCHAR(255) NOT NULL,
+          data JSONB NOT NULL DEFAULT '{}'::jsonb,
+          -- A duplicate key_value within one uploaded table must be a rejected, visible error at
+          -- upload time (plan's explicit edge case), not silent last-write-wins - enforced here
+          -- so the API can't accidentally skip that check.
+          UNIQUE (table_id, key_value)
+      );
+      CREATE INDEX IF NOT EXISTS idx_ivr_lookup_rows_table_key ON ivr_lookup_rows(table_id, key_value);
+
+      -- Links a campaign to the IVR flow it should run (Workstream 8.8's dialplan entry point
+      -- reads this to decide Stasis(ivr_engine,...) vs. the plain campaign-broadcast-context).
+      -- NULL means "ordinary single-prompt broadcast campaign", unchanged from before Workstream 8.
+      ALTER TABLE voice_campaigns ADD COLUMN IF NOT EXISTS ivr_flow_id UUID REFERENCES ivr_flows(id) ON DELETE SET NULL;
     `);
     console.log('[Database] ✅ Schema and Indexes automatically verified/created.');
   } catch (err) {
@@ -466,6 +545,8 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, async () => {
   console.log(`Contact Center Server running on port ${PORT}`);
   
-  // Connect to Asterisk AMI Socket
-  await asteriskService.connect();
+  // AMI and ARI are independent connections (different ports/protocols) - run them concurrently
+  // so a slow/stuck one never delays the other.
+  asteriskService.connect();
+  ariService.connect();
 });

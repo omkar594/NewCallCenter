@@ -116,7 +116,7 @@ async function getMaxConcurrentCalls() {
 async function claimNextPendingLead() {
   const result = await pool.query(`
     WITH target_lead AS (
-      SELECT cl.id, cl.phone_number, cl.customer_name, cl.campaign_id, vc.audio_url, vc.allowed_ports
+      SELECT cl.id, cl.phone_number, cl.customer_name, cl.campaign_id, vc.audio_url, vc.allowed_ports, vc.ivr_flow_id
       FROM campaign_leads cl
       JOIN voice_campaigns vc ON cl.campaign_id = vc.id
       WHERE cl.dial_status = 'pending' AND vc.status IN ('running', 'pending')
@@ -141,7 +141,8 @@ async function claimNextPendingLead() {
       target_lead.customer_name,
       target_lead.campaign_id,
       target_lead.audio_url,
-      target_lead.allowed_ports;
+      target_lead.allowed_ports,
+      target_lead.ivr_flow_id;
   `);
   return result.rows[0] || null;
 }
@@ -188,17 +189,28 @@ async function dispatchLead(lead) {
 
   console.log(`\n[Worker] Dispatching lead ${lead.lead_id} -> ${cleanPhoneNumber} | Port strategy: ${label}`);
 
+  // Workstream 8: a campaign with voice_campaigns.ivr_flow_id set dials into the new
+  // ivr-campaign-context (Stasis-driven, interpreted by ivrFlowEngine.js) instead of the plain
+  // single-prompt campaign-broadcast-context. FLOW_ID replaces CAMPAIGN_AUDIO_FILE as the
+  // dialplan-facing variable in that case - the flow engine looks up its own prompts per node.
+  const dialContext = lead.ivr_flow_id ? 'ivr-campaign-context' : 'campaign-broadcast-context';
+  const originateVars = {
+    LEAD_ID: lead.lead_id,
+    CAMP_ID: lead.campaign_id,
+    TARGET_PORT: targetPort || ''
+  };
+  if (lead.ivr_flow_id) {
+    originateVars.FLOW_ID = lead.ivr_flow_id;
+  } else {
+    originateVars.CAMPAIGN_AUDIO_FILE = lead.audio_url || '';
+  }
+
   const { actionId, ackPromise } = asteriskService.originateAsync(
     channelName,
     cleanPhoneNumber,
-    'campaign-broadcast-context',
+    dialContext,
     1,
-    {
-      CAMPAIGN_AUDIO_FILE: lead.audio_url || '',
-      LEAD_ID: lead.lead_id,
-      CAMP_ID: lead.campaign_id,
-      TARGET_PORT: targetPort || ''
-    },
+    originateVars,
     'VoiceBroadcast',
     ORIGINATE_RING_TIMEOUT_MS
   );
