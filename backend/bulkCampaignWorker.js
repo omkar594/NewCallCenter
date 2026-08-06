@@ -365,8 +365,15 @@ async function startWorkerWithRetry() {
     try {
       const lockClient = await acquireSingletonLock();
       if (!lockClient) {
-        console.warn('[Worker] Another process already holds the campaign dialer lock - not starting a second dialer.');
-        return;
+        // Someone else holds it right now - not a permanent state. A deploy overlap (old
+        // instance still shutting down while the new one boots) resolves itself within
+        // seconds once the old process dies and Postgres auto-releases its advisory lock,
+        // so this must keep retrying rather than give up for the rest of this process's
+        // lifetime (previously a `return` here meant a process that lost the race once at
+        // boot would never dial another lead again, even after the lock became free).
+        console.warn(`[Worker] Another process already holds the campaign dialer lock - retrying in ${LOCK_RETRY_DELAY_MS}ms`);
+        await sleep(LOCK_RETRY_DELAY_MS);
+        continue;
       }
       console.log('[Worker] Acquired singleton dialer lock.');
       await startWorkerLoop();
