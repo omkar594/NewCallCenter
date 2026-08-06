@@ -19,6 +19,12 @@ const DEFAULT_LEAD_LANGUAGE_CODE = 'en-US';
 // super_admin, whose JWT tenant_id already points at this same default) doesn't have a distinct
 // tenant of their own - matches ivrController.js's DEFAULT_TENANT_ID.
 const DEFAULT_TENANT_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+// PostgreSQL's wire protocol caps bound parameters at 65535 per query (an unsigned 16-bit
+// count field, not a config value). Each lead contributes 3 params (phone, name, language)
+// on top of the shared campaign_id - a single INSERT stopped working above ~21,844 leads,
+// which broke real bulk campaigns (e.g. a 100k-row CSV) outright. 5000 leads/batch keeps
+// every batch at 15,001 params, comfortably under the limit.
+const LEAD_INSERT_BATCH_SIZE = 5000;
 
 // Workstream 9: campaigns are now scoped to the authenticated caller's own tenant_id, closing
 // the gap where every campaign previously landed under one shared default tenant regardless of
@@ -52,6 +58,47 @@ function parseLeadsCsv(csvContent) {
     });
   }
   return leads;
+}
+
+// Inserts every lead in batches of LEAD_INSERT_BATCH_SIZE, all within ONE transaction (a
+// dedicated client, not executeTenantQuery - that helper opens/commits its own transaction per
+// call, which would make a multi-batch insert only partially atomic). set_config() replicates
+// executeTenantQuery's RLS tenant-context setup inside this same transaction, since we're
+// bypassing that helper. If any batch fails, everything rolls back - the caller never ends up
+// with a campaign row claiming e.g. 100,000 total_leads while only 40,000 actually landed.
+async function insertCampaignLeads(campaignId, leads, tenantId) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    if (tenantId) {
+      await client.query('SELECT set_config(\'app.current_tenant_id\', $1, true)', [tenantId]);
+    } else {
+      await client.query('SELECT set_config(\'app.current_tenant_id\', \'\', true)');
+    }
+
+    for (let offset = 0; offset < leads.length; offset += LEAD_INSERT_BATCH_SIZE) {
+      const batch = leads.slice(offset, offset + LEAD_INSERT_BATCH_SIZE);
+      const valuesSql = batch.map((_, i) => {
+        const base = i * 3;
+        return `($1, $${base + 2}, $${base + 3}, $${base + 4}, 'pending')`;
+      }).join(', ');
+      const params = [campaignId];
+      for (const lead of batch) {
+        params.push(lead.phoneNumber, lead.customerName, lead.languageCode || DEFAULT_LEAD_LANGUAGE_CODE);
+      }
+      await client.query(`
+        INSERT INTO campaign_leads (campaign_id, phone_number, customer_name, language_code, dial_status)
+        VALUES ${valuesSql}
+      `, params);
+    }
+
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 // Webhook for Asterisk dialplan to report voice campaign call status updates.
@@ -423,26 +470,23 @@ export async function createBroadcastCampaign(req, res) {
 
     const campaign = campaignResult.rows[0];
 
-    // Save all leads in a single multi-row INSERT (one round-trip, one transaction) instead
-    // of one INSERT per lead - matters once CSVs run into the thousands of rows.
-    const valuesSql = leads.map((_, i) => {
-      // Each lead contributes exactly 3 params (phone, name, language) on top of the shared $1
-      // campaign_id - keep this stride and the params loop below in lockstep. A past mismatch
-      // here (stride-3 SQL text with a stride-2 params loop) skipped a placeholder number for
-      // every lead after the first and left it unreferenced, producing Postgres's "could not
-      // determine data type of parameter" error - the params loop right below MUST push exactly
-      // 3 values per lead to match.
-      const base = i * 3;
-      return `($1, $${base + 2}, $${base + 3}, $${base + 4}, 'pending')`;
-    }).join(', ');
-    const insertParams = [campaign.id];
-    for (const lead of leads) {
-      insertParams.push(lead.phoneNumber, lead.customerName, lead.languageCode || DEFAULT_LEAD_LANGUAGE_CODE);
+    // Batched (LEAD_INSERT_BATCH_SIZE per round-trip), all inside one transaction - a single
+    // multi-row INSERT here used to blow past PostgreSQL's 65535-bound-parameter limit on any
+    // CSV above ~21,844 leads, which broke real bulk campaigns outright. See
+    // insertCampaignLeads() above for why a dedicated client/transaction is used here instead
+    // of executeTenantQuery.
+    try {
+      await insertCampaignLeads(campaign.id, leads, campaignTenantId);
+    } catch (leadsError) {
+      // The campaign row above already committed (executeTenantQuery is its own transaction) -
+      // without this cleanup, a failed/partial lead insert would leave a zombie campaign behind
+      // claiming total_leads leads that don't actually exist.
+      console.error(`[CampaignController] Lead insert failed for campaign ${campaign.id}, removing the orphaned campaign row:`, leadsError.message);
+      await executeTenantQuery(null, `DELETE FROM voice_campaigns WHERE id = $1`, [campaign.id]).catch((cleanupErr) => {
+        console.error(`[CampaignController] Failed to clean up orphaned campaign ${campaign.id}:`, cleanupErr.message);
+      });
+      throw leadsError;
     }
-    await executeTenantQuery(null, `
-      INSERT INTO campaign_leads (campaign_id, phone_number, customer_name, language_code, dial_status)
-      VALUES ${valuesSql}
-    `, insertParams);
 
     // Fire-and-forget: leads exist now (needed so the preloader can read their language_code
     // values), so kick off preparation without blocking this response on it - the worker can't
