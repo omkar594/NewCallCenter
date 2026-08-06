@@ -32,6 +32,7 @@ CREATE TABLE tenants (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL UNIQUE,
     subdomain VARCHAR(100) NOT NULL UNIQUE,
+    status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'deactivated')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

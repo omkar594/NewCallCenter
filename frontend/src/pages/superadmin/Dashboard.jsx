@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Users, Plus, AlertCircle } from 'lucide-react';
 import { apiGet } from '../../api/client.js';
 import DataTable from '../../components/DataTable.jsx';
+import StatusBadge from '../../components/StatusBadge.jsx';
 
 export default function SuperAdminDashboard() {
   const [tenants, setTenants] = useState(null);
@@ -57,6 +58,7 @@ export default function SuperAdminDashboard() {
             )
           },
           { key: 'subdomain', label: 'Subdomain' },
+          { key: 'status', label: 'Status', render: (t) => <StatusBadge status={t.status || 'active'} /> },
           { key: 'admin_count', label: 'Admins' },
           {
             key: 'ports',

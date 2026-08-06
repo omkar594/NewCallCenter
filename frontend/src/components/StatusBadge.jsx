@@ -12,7 +12,9 @@ const STYLES = {
   busy: 'bg-red-100 text-red-700',
   'no-answer': 'bg-orange-100 text-orange-700',
   opted_out: 'bg-slate-200 text-slate-500',
-  offline: 'bg-slate-200 text-slate-500'
+  offline: 'bg-slate-200 text-slate-500',
+  deactivated: 'bg-slate-200 text-slate-500',
+  cancelled: 'bg-slate-200 text-slate-500'
 };
 
 export default function StatusBadge({ status }) {

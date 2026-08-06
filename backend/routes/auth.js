@@ -1,5 +1,5 @@
 import express from 'express';
-import { login, logout, createAgent, getAgents, getMySipCredentials, createClient, getClients } from '../controllers/authController.js';
+import { login, logout, createAgent, getAgents, getMySipCredentials, createClient, getClients, deactivateClient, reactivateClient } from '../controllers/authController.js';
 import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -12,6 +12,11 @@ router.post('/logout', authenticateToken, logout);
 // support "many clients, each with their own flow" with zero code changes per client.
 router.post('/clients', authenticateToken, authorizeRoles(['super_admin']), createClient);
 router.get('/clients', authenticateToken, authorizeRoles(['super_admin']), getClients);
+// Soft-delete: locks out logins, releases SIM ports, cancels active campaigns - keeps all
+// historical data (flows/campaigns/call logs) intact. See authController.js for exactly what
+// each does and why.
+router.post('/clients/:tenantId/deactivate', authenticateToken, authorizeRoles(['super_admin']), deactivateClient);
+router.post('/clients/:tenantId/reactivate', authenticateToken, authorizeRoles(['super_admin']), reactivateClient);
 
 // Workstream 7: agent provisioning + softphone credential fetch.
 router.post('/agents', authenticateToken, authorizeRoles(['super_admin', 'client_admin', 'team_leader']), createAgent);

@@ -138,6 +138,11 @@ async function initSchema() {
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
+      -- Soft-delete support: deactivating a tenant locks out its logins and releases its ports
+      -- without touching any historical data (flows/campaigns/call logs) - see
+      -- authController.js's deactivateClient/reactivateClient.
+      ALTER TABLE tenants ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'deactivated'));
+
       CREATE TABLE IF NOT EXISTS gateways (
           id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
           name VARCHAR(255) NOT NULL UNIQUE,

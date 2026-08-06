@@ -49,7 +49,19 @@ export async function prepareCampaignAudio(campaignId, flowId) {
   } catch (err) {
     console.error(`[AudioPreloader] Campaign ${campaignId} preload failed: ${err.message}`);
   } finally {
-    await pool.query(`UPDATE voice_campaigns SET status = 'running', updated_at = NOW() WHERE id = $1`, [campaignId]);
-    console.log(`[AudioPreloader] Campaign ${campaignId} is now running.`);
+    // Only flip the status this function itself is responsible for advancing - WHERE status =
+    // 'preparing' guards against clobbering a status some other action set out from under us
+    // while preload was still in flight (e.g. a tenant deactivation cancelling this campaign).
+    // An unconditional UPDATE here previously could silently undo that kind of change moments
+    // after it happened.
+    const result = await pool.query(
+      `UPDATE voice_campaigns SET status = 'running', updated_at = NOW() WHERE id = $1 AND status = 'preparing'`,
+      [campaignId]
+    );
+    if (result.rowCount > 0) {
+      console.log(`[AudioPreloader] Campaign ${campaignId} is now running.`);
+    } else {
+      console.log(`[AudioPreloader] Campaign ${campaignId} was no longer 'preparing' (status changed elsewhere) - leaving it as-is.`);
+    }
   }
 }

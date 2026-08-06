@@ -195,7 +195,7 @@ export async function createClient(req, res) {
 export async function getClients(req, res) {
   try {
     const result = await pool.query(`
-      SELECT t.id, t.name, t.subdomain, t.created_at,
+      SELECT t.id, t.name, t.subdomain, t.status, t.created_at,
              COUNT(u.id) FILTER (WHERE u.role = 'client_admin') AS admin_count
       FROM tenants t
       LEFT JOIN users u ON u.tenant_id = t.id
@@ -206,6 +206,93 @@ export async function getClients(req, res) {
   } catch (error) {
     console.error('getClients failed:', error);
     res.status(500).json({ error: 'Failed to list clients' });
+  }
+}
+
+// Soft-delete: freezes a tenant out without touching any of their historical data. Reuses
+// exactly the trust level createClient already requires (super_admin only, see routes/auth.js).
+export async function deactivateClient(req, res) {
+  const { tenantId } = req.params;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const tenantResult = await client.query(
+      `UPDATE tenants SET status = 'deactivated' WHERE id = $1 RETURNING id, name, status`,
+      [tenantId]
+    );
+    if (!tenantResult.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+
+    // Locks out every login for this tenant immediately - login() already rejects any
+    // non-'active' user with a 403, so no new auth logic is needed for this to take effect.
+    await client.query(`UPDATE users SET status = 'inactive' WHERE tenant_id = $1`, [tenantId]);
+
+    // Release their SIM ports back to the free pool - identical release logic to
+    // gatewayController.js's setTenantPorts.
+    const portsResult = await client.query(
+      `UPDATE gateway_ports SET tenant_id = NULL, mapped_trunk_name = NULL WHERE tenant_id = $1 RETURNING port_number`,
+      [tenantId]
+    );
+
+    // Stops bulkCampaignWorker.js's claimNextPendingLead() from ever touching this tenant's
+    // leads again - its query only claims leads whose campaign status is 'running'/'pending'.
+    // 'preparing' is included too: campaignAudioPreloader.js's finally block now only flips a
+    // 'preparing' campaign to 'running' if it's still 'preparing' when it finishes, so setting
+    // 'cancelled' here can't get silently clobbered back by an in-flight preload.
+    const campaignsResult = await client.query(
+      `UPDATE voice_campaigns SET status = 'cancelled', updated_at = NOW()
+       WHERE tenant_id = $1 AND status IN ('preparing', 'running', 'pending')
+       RETURNING id`,
+      [tenantId]
+    );
+
+    await client.query('COMMIT');
+    res.json({
+      message: `${tenantResult.rows[0].name} deactivated`,
+      tenant: tenantResult.rows[0],
+      portsReleased: portsResult.rows.map((r) => r.port_number),
+      campaignsCancelled: campaignsResult.rows.length
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('deactivateClient failed:', error);
+    res.status(500).json({ error: 'Failed to deactivate client' });
+  } finally {
+    client.release();
+  }
+}
+
+// Reverses deactivateClient - logins work again, but ports are NOT auto-restored (they may
+// belong to a different tenant by now; re-assign via the existing
+// PUT /api/gateways/tenants/:tenantId/ports) and cancelled campaigns stay cancelled, not resumed.
+export async function reactivateClient(req, res) {
+  const { tenantId } = req.params;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const tenantResult = await client.query(
+      `UPDATE tenants SET status = 'active' WHERE id = $1 RETURNING id, name, status`,
+      [tenantId]
+    );
+    if (!tenantResult.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+
+    await client.query(`UPDATE users SET status = 'active' WHERE tenant_id = $1`, [tenantId]);
+
+    await client.query('COMMIT');
+    res.json({ message: `${tenantResult.rows[0].name} reactivated`, tenant: tenantResult.rows[0] });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('reactivateClient failed:', error);
+    res.status(500).json({ error: 'Failed to reactivate client' });
+  } finally {
+    client.release();
   }
 }
 

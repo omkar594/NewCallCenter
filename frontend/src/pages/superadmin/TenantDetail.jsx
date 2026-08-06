@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { apiGet, apiPut } from '../../api/client.js';
+import { ArrowLeft, AlertCircle, CheckCircle2, PowerOff, Power } from 'lucide-react';
+import { apiGet, apiPut, apiPost } from '../../api/client.js';
 import DataTable from '../../components/DataTable.jsx';
 import StatusBadge from '../../components/StatusBadge.jsx';
+import Modal from '../../components/Modal.jsx';
 
 export default function TenantDetail() {
   const { tenantId } = useParams();
@@ -16,6 +17,9 @@ export default function TenantDetail() {
   const [saveError, setSaveError] = useState('');
   const [saveOk, setSaveOk] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showLifecycleModal, setShowLifecycleModal] = useState(false);
+  const [lifecycleError, setLifecycleError] = useState('');
+  const [lifecycleSubmitting, setLifecycleSubmitting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -59,6 +63,23 @@ export default function TenantDetail() {
     }
   };
 
+  const isActive = (tenant?.status || 'active') === 'active';
+
+  const handleLifecycleAction = async () => {
+    setLifecycleError('');
+    setLifecycleSubmitting(true);
+    try {
+      const action = isActive ? 'deactivate' : 'reactivate';
+      await apiPost(`/api/auth/clients/${tenantId}/${action}`);
+      setShowLifecycleModal(false);
+      await load();
+    } catch (err) {
+      setLifecycleError(err.message);
+    } finally {
+      setLifecycleSubmitting(false);
+    }
+  };
+
   if (!tenant) {
     return error ? (
       <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
@@ -75,9 +96,65 @@ export default function TenantDetail() {
         <Link to="/admin" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-2">
           <ArrowLeft className="w-4 h-4" /> All tenants
         </Link>
-        <h1 className="text-xl font-semibold text-slate-900">{tenant.name}</h1>
-        <p className="text-sm text-slate-500">{tenant.subdomain} - {tenant.admin_count} admin(s)</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-semibold text-slate-900">{tenant.name}</h1>
+              <StatusBadge status={tenant.status || 'active'} />
+            </div>
+            <p className="text-sm text-slate-500">{tenant.subdomain} - {tenant.admin_count} admin(s)</p>
+          </div>
+          <button
+            onClick={() => { setLifecycleError(''); setShowLifecycleModal(true); }}
+            className={`flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-md ${
+              isActive ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+            }`}
+          >
+            {isActive ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
+            {isActive ? 'Deactivate Client' : 'Reactivate Client'}
+          </button>
+        </div>
       </div>
+
+      {showLifecycleModal && (
+        <Modal title={isActive ? 'Deactivate this client?' : 'Reactivate this client?'} onClose={() => setShowLifecycleModal(false)}>
+          <div className="space-y-4">
+            {isActive ? (
+              <ul className="text-sm text-slate-600 space-y-1.5 list-disc pl-5">
+                <li>Every login for <strong>{tenant.name}</strong> stops working immediately.</li>
+                <li>Their SIM ports ({selectedPorts.length ? selectedPorts.join(', ') : 'none'}) are released back to the free pool.</li>
+                <li>Any preparing/running campaigns are cancelled - the dialer stops touching their leads.</li>
+                <li>Nothing is deleted - flows, campaigns, and call history stay fully intact and can be reviewed any time.</li>
+              </ul>
+            ) : (
+              <ul className="text-sm text-slate-600 space-y-1.5 list-disc pl-5">
+                <li>Logins for <strong>{tenant.name}</strong> work again immediately.</li>
+                <li>Ports are <strong>not</strong> automatically restored - assign new ones below after reactivating.</li>
+                <li>Cancelled campaigns stay cancelled - they won't resume dialing on their own.</li>
+              </ul>
+            )}
+            {lifecycleError && (
+              <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
+                <AlertCircle className="w-4 h-4" /> {lifecycleError}
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={handleLifecycleAction}
+                disabled={lifecycleSubmitting}
+                className={`text-sm font-medium px-4 py-2 rounded-md text-white disabled:opacity-60 ${
+                  isActive ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
+              >
+                {lifecycleSubmitting ? 'Working...' : isActive ? 'Yes, deactivate' : 'Yes, reactivate'}
+              </button>
+              <button onClick={() => setShowLifecycleModal(false)} className="text-sm text-slate-500 hover:text-slate-700 px-4 py-2">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       <section className="bg-white border border-slate-200 rounded-lg p-6 space-y-4">
         <h2 className="font-medium text-slate-900">SIM Ports</h2>
