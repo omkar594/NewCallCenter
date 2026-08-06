@@ -1,6 +1,8 @@
 import { executeTenantQuery } from '../config/database.js';
 import DinstarService from '../services/dinstarService.js';
 
+const DEFAULT_TENANT_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+
 // Get list of all gateways (Super Admin only)
 export async function getGateways(req, res) {
   try {
@@ -44,16 +46,21 @@ export async function createGateway(req, res) {
   }
 }
 
-// Get all ports and their tenant mappings
+// Get all ports and their tenant mappings. super_admin sees every port across every tenant
+// (needed to actually do allocation); anyone else only ever sees ports allocated to their own
+// tenant - this doubles as the "what are my ports" view, no separate endpoint needed.
 export async function getPortAllocations(req, res) {
+  const isSuperAdmin = req.user?.role === 'super_admin';
+  const callerTenantId = req.user?.tenant_id || DEFAULT_TENANT_ID;
   try {
     const result = await executeTenantQuery(null, `
       SELECT gp.id, gp.port_number, gp.mapped_trunk_name, gp.status, g.name as gateway_name, g.ip_address, t.name as tenant_name, gp.tenant_id
       FROM gateway_ports gp
       JOIN gateways g ON g.id = gp.gateway_id
       LEFT JOIN tenants t ON t.id = gp.tenant_id
+      ${isSuperAdmin ? '' : 'WHERE gp.tenant_id = $1'}
       ORDER BY g.name, gp.port_number
-    `);
+    `, isSuperAdmin ? [] : [callerTenantId]);
     res.json(result.rows);
   } catch (error) {
     console.error('getPortAllocations failed:', error);

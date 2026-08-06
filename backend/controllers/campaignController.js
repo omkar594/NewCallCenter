@@ -291,17 +291,58 @@ export async function createBroadcastCampaign(req, res) {
     });
   }
 
-  // Parse allowed ports string/array (e.g. [0, 1] or "0,1")
+  // Workstream 9: a campaign can only ever request SIM ports actually allocated to the
+  // caller's own tenant (gateway_ports.tenant_id, assigned via POST /api/gateways/ports/allocate)
+  // - previously allowedPorts was whatever the caller typed, completely unchecked. A tenant with
+  // NO explicit allocation on file is unrestricted (today's 'all' behavior) - the restriction
+  // only activates once a super_admin has actually assigned specific ports to that tenant, so
+  // this never breaks an unconfigured client or the platform's own default tenant retroactively.
   let parsedPorts = 'all';
-  if (allowedPorts) {
-    try {
-      const p = typeof allowedPorts === 'string' ? JSON.parse(allowedPorts) : allowedPorts;
-      if (Array.isArray(p) && p.length > 0) {
-        parsedPorts = p.map(Number).join(',');
+  try {
+    const portsTenantId = resolveTenantId(req);
+    const allocatedResult = await executeTenantQuery(null,
+      `SELECT port_number FROM gateway_ports WHERE tenant_id = $1 ORDER BY port_number`,
+      [portsTenantId]
+    );
+    const allocatedPorts = allocatedResult.rows.map((r) => r.port_number);
+
+    if (allocatedPorts.length > 0) {
+      if (allowedPorts) {
+        let requested;
+        try {
+          requested = typeof allowedPorts === 'string' ? JSON.parse(allowedPorts) : allowedPorts;
+        } catch (e) {
+          requested = String(allowedPorts).split(',').map(Number);
+        }
+        if (!Array.isArray(requested)) requested = [requested];
+        requested = requested.map(Number);
+        const notAllocated = requested.filter((p) => !allocatedPorts.includes(p));
+        if (notAllocated.length > 0) {
+          return res.status(400).json({
+            error: `Port(s) ${notAllocated.join(', ')} are not allocated to your account. Ports allocated to you: ${allocatedPorts.join(', ') || '(none)'}`
+          });
+        }
+        parsedPorts = requested.join(',');
+      } else {
+        // No allowedPorts specified - default to every port this tenant actually owns,
+        // instead of the global 'all'.
+        parsedPorts = allocatedPorts.join(',');
       }
-    } catch (e) {
-      parsedPorts = String(allowedPorts);
+    } else if (allowedPorts) {
+      // No allocation on file for this tenant - nothing to validate against, so fall back to
+      // the original unrestricted parsing (still respects whatever the caller asked for).
+      try {
+        const p = typeof allowedPorts === 'string' ? JSON.parse(allowedPorts) : allowedPorts;
+        if (Array.isArray(p) && p.length > 0) {
+          parsedPorts = p.map(Number).join(',');
+        }
+      } catch (e) {
+        parsedPorts = String(allowedPorts);
+      }
     }
+  } catch (err) {
+    console.error('[CampaignController] Port allocation lookup failed:', err.message);
+    return res.status(500).json({ error: 'Failed to verify port allocation' });
   }
 
   let tempInputPath = null;
