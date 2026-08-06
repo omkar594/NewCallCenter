@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "b1e6f2b0-4c1a-4a6a-9c1e-7c1f3d5a2b10",
-    "name": "CallCenter - IVR + Campaign Pipeline Test",
-    "description": "Sequential smoke test for the outbound campaign backend: auth, IVR flow authoring (audio upload + lookup table + flow + activation), campaign creation, and the agent/gateway/analytics APIs. Run folders top to bottom - each request's Tests script saves IDs/tokens into collection variables that later requests consume automatically, so you can just hit 'Run collection' or click through in order.\n\nThe IVR flow built in folder 3 is a SAMPLE/TEST flow only (a small provider-lookup demo), meant to prove the pipeline end-to-end - it is not a real production flow. Design your actual flows the same way, through the same requests, with your own content.\n\nNote: the Dinstar SIM gateway is currently offline, so folder 4's campaign will be created and correctly linked to the IVR flow, but won't actually ring a phone until the gateway is back online. Everything up to and including the dial attempt can be verified without it.",
+    "name": "CallCenter - Multi-Client IVR Platform",
+    "description": "Follows the platform's real story end to end: onboard two independent clients (Apex Bank, Swift Loan Recovery) -> each designs their own flow (typed prompts + optional real audio + a data lookup) -> create a campaign atomically linked to that flow -> watch it pre-synthesize every prompt BEFORE the worker is allowed to dial anyone ('preparing' -> 'running') -> prove neither client can see or touch the other's flow or campaign. Run folders top to bottom - each request's Tests script saves IDs/tokens into collection variables that later requests consume automatically.\n\nNote: the Dinstar SIM gateway may be offline - if so, campaigns still create/prepare/link correctly, they just won't physically ring a phone until the gateway is back online. Everything through the dial attempt can be verified without it.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -10,14 +10,23 @@
     { "key": "admin_username", "value": "bootstrap_admin" },
     { "key": "admin_password", "value": "AdminPass123!" },
     { "key": "admin_token", "value": "" },
+    { "key": "bank_tenant_name", "value": "Apex Bank" },
+    { "key": "bank_subdomain", "value": "apexbank" },
+    { "key": "bank_admin_username", "value": "apexbank_admin" },
+    { "key": "bank_admin_password", "value": "ApexBank123!" },
+    { "key": "bank_admin_token", "value": "" },
+    { "key": "loan_tenant_name", "value": "Swift Loan Recovery" },
+    { "key": "loan_subdomain", "value": "swiftloans" },
+    { "key": "loan_admin_username", "value": "swiftloans_admin" },
+    { "key": "loan_admin_password", "value": "SwiftLoans123!" },
+    { "key": "loan_admin_token", "value": "" },
     { "key": "test_phone_number", "value": "+919999999999" },
-    { "key": "prompt_welcome", "value": "" },
-    { "key": "prompt_menu", "value": "" },
-    { "key": "prompt_collect", "value": "" },
-    { "key": "prompt_notfound", "value": "" },
+    { "key": "test_language_code", "value": "en-US" },
+    { "key": "prompt_welcome_audio", "value": "" },
     { "key": "lookup_table_id", "value": "" },
-    { "key": "flow_id", "value": "" },
-    { "key": "campaign_id", "value": "" },
+    { "key": "bank_flow_id", "value": "" },
+    { "key": "loan_flow_id", "value": "" },
+    { "key": "bank_campaign_id", "value": "" },
     { "key": "agent_username", "value": "test_agent_pm" },
     { "key": "agent_password", "value": "AgentTest123!" },
     { "key": "agent_token", "value": "" },
@@ -55,7 +64,7 @@
           ]
         },
         {
-          "name": "0.2 Admin Login",
+          "name": "0.2 Platform Owner Login (super_admin)",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -64,7 +73,7 @@
               "raw": "{\n  \"username\": \"{{admin_username}}\",\n  \"password\": \"{{admin_password}}\"\n}"
             },
             "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] },
-            "description": "Logs in as the super_admin bootstrap account. Saves the JWT into {{admin_token}}, used as Bearer auth by every /api/ivr/* and /api/auth/agents request below."
+            "description": "This is the ONE account that can onboard new clients (POST /api/auth/clients is super_admin-gated). Every client's own admin, created in folder 1, only ever manages their own tenant from here on."
           },
           "event": [
             {
@@ -86,13 +95,125 @@
       ]
     },
     {
-      "name": "1. IVR - Upload Prompt Audio",
+      "name": "1. Onboard Two Independent Clients",
       "item": [
         {
-          "name": "1.1 Upload Prompt: Welcome",
+          "name": "1.1 Onboard Client: Apex Bank",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantName\": \"{{bank_tenant_name}}\",\n  \"subdomain\": \"{{bank_subdomain}}\",\n  \"adminUsername\": \"{{bank_admin_username}}\",\n  \"adminPassword\": \"{{bank_admin_password}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/clients", "host": ["{{baseUrl}}"], "path": ["api", "auth", "clients"] },
+            "description": "Creates a brand-new tenant + its first client_admin login in ONE atomic request. This is the entire onboarding step for a new business - no code changes, ever, per client. If you've already run this collection before, you'll get a 409 (tenant/username already exists) - that's fine, just continue to 1.3."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Client onboarded or already exists', function () {",
+                  "    pm.expect([201, 409]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.2 Onboard Client: Swift Loan Recovery",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantName\": \"{{loan_tenant_name}}\",\n  \"subdomain\": \"{{loan_subdomain}}\",\n  \"adminUsername\": \"{{loan_admin_username}}\",\n  \"adminPassword\": \"{{loan_admin_password}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/clients", "host": ["{{baseUrl}}"], "path": ["api", "auth", "clients"] },
+            "description": "A completely different business scenario (loan recovery vs. banking) - same onboarding call, zero code differences. Their tenant_id will be different from Apex Bank's, which is what makes everything below isolated."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Client onboarded or already exists', function () {",
+                  "    pm.expect([201, 409]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.3 Login as Apex Bank Admin",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{bank_admin_username}}\",\n  \"password\": \"{{bank_admin_password}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] },
+            "description": "From here on, {{bank_admin_token}} is used for every Apex Bank request below - it carries their tenant_id in the JWT, which is what every /api/ivr/* and /api/campaigns/* endpoint filters by."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Bank admin login succeeded', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('bank_admin_token', json.token);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.4 Login as Swift Loans Admin",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{loan_admin_username}}\",\n  \"password\": \"{{loan_admin_password}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Loan admin login succeeded', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('loan_admin_token', json.token);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Apex Bank Designs Its Own Flow",
+      "item": [
+        {
+          "name": "2.1 Upload a Real Recorded Prompt (optional path)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{bank_admin_token}}" }],
             "body": {
               "mode": "formdata",
               "formdata": [
@@ -100,7 +221,7 @@
               ]
             },
             "url": { "raw": "{{baseUrl}}/api/ivr/prompts", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "prompts"] },
-            "description": "Transcodes + delivers the file to the Asterisk box's sounds directory and returns { prompt_id }, the basename to reference in a flow node's prompt_id. Uses postman/assets/welcome_test.wav (a real Piper-generated sample greeting, already in this folder)."
+            "description": "Path 1 of 2 for getting a prompt onto the box: upload a real recording, get back a prompt_id to reference in a node. Transcodes + delivers to the Asterisk box automatically. The flow below uses this for its welcome node, and typed text (path 2) for everything else, to show both working side by side."
           },
           "event": [
             {
@@ -112,7 +233,7 @@
                   "    pm.response.to.have.status(201);",
                   "    var json = pm.response.json();",
                   "    pm.expect(json.prompt_id).to.be.a('string');",
-                  "    pm.collectionVariables.set('prompt_welcome', json.prompt_id);",
+                  "    pm.collectionVariables.set('prompt_welcome_audio', json.prompt_id);",
                   "});"
                 ]
               }
@@ -120,115 +241,20 @@
           ]
         },
         {
-          "name": "1.2 Upload Prompt: Menu",
+          "name": "2.2 Upload Lookup Data (CSV)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "header": [{ "key": "Authorization", "value": "Bearer {{bank_admin_token}}" }],
             "body": {
               "mode": "formdata",
               "formdata": [
-                { "key": "audio", "type": "file", "src": "/home/cell24x7/Downloads/Project/ofc/Outbound_call/outbound_campaign_module/postman/assets/menu_test.wav" }
-              ]
-            },
-            "url": { "raw": "{{baseUrl}}/api/ivr/prompts", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "prompts"] },
-            "description": "'Press 1 to look up a provider number. Press 9 to end this call.'"
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Prompt uploaded', function () {",
-                  "    pm.response.to.have.status(201);",
-                  "    var json = pm.response.json();",
-                  "    pm.collectionVariables.set('prompt_menu', json.prompt_id);",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "1.3 Upload Prompt: Collect Input",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
-            "body": {
-              "mode": "formdata",
-              "formdata": [
-                { "key": "audio", "type": "file", "src": "/home/cell24x7/Downloads/Project/ofc/Outbound_call/outbound_campaign_module/postman/assets/collect_test.wav" }
-              ]
-            },
-            "url": { "raw": "{{baseUrl}}/api/ivr/prompts", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "prompts"] },
-            "description": "'Please enter a ten digit provider number, then press the pound key.'"
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Prompt uploaded', function () {",
-                  "    pm.response.to.have.status(201);",
-                  "    var json = pm.response.json();",
-                  "    pm.collectionVariables.set('prompt_collect', json.prompt_id);",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "1.4 Upload Prompt: Not Found",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
-            "body": {
-              "mode": "formdata",
-              "formdata": [
-                { "key": "audio", "type": "file", "src": "/home/cell24x7/Downloads/Project/ofc/Outbound_call/outbound_campaign_module/postman/assets/notfound_test.wav" }
-              ]
-            },
-            "url": { "raw": "{{baseUrl}}/api/ivr/prompts", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "prompts"] },
-            "description": "'Sorry, that provider number was not found in our records.'"
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Prompt uploaded', function () {",
-                  "    pm.response.to.have.status(201);",
-                  "    var json = pm.response.json();",
-                  "    pm.collectionVariables.set('prompt_notfound', json.prompt_id);",
-                  "});"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "2. IVR - Lookup Table",
-      "item": [
-        {
-          "name": "2.1 Upload Lookup Table (Providers CSV)",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
-            "body": {
-              "mode": "formdata",
-              "formdata": [
-                { "key": "name", "type": "text", "value": "Test Providers" },
+                { "key": "name", "type": "text", "value": "Apex Bank Account Lookup" },
                 { "key": "keyColumn", "type": "text", "value": "provider_number" },
                 { "key": "csv", "type": "file", "src": "/home/cell24x7/Downloads/Project/ofc/Outbound_call/outbound_campaign_module/postman/assets/providers.csv" }
               ]
             },
             "url": { "raw": "{{baseUrl}}/api/ivr/lookup-tables", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "lookup-tables"] },
-            "description": "Uploads a hosted CSV lookup table (3 sample providers, keyed by provider_number) - the 'table' source option for the flow's lookup node, for clients without their own webhook backend."
+            "description": "Sample CSV (provider_number/provider_name columns) - swap this file for your own client data (account numbers, loan IDs, policy numbers, whatever your lookup node needs to key on) and adjust keyColumn to match your header. This is the 'table' source option for a lookup node; a client with their own backend can point at a webhook instead."
           },
           "event": [
             {
@@ -239,7 +265,6 @@
                   "pm.test('Lookup table created', function () {",
                   "    pm.response.to.have.status(201);",
                   "    var json = pm.response.json();",
-                  "    pm.expect(json.row_count).to.eql(3);",
                   "    pm.collectionVariables.set('lookup_table_id', json.id);",
                   "});"
                 ]
@@ -248,49 +273,16 @@
           ]
         },
         {
-          "name": "2.2 Get Lookup Table",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
-            "url": {
-              "raw": "{{baseUrl}}/api/ivr/lookup-tables/{{lookup_table_id}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "ivr", "lookup-tables", "{{lookup_table_id}}"]
-            },
-            "description": "Confirms the 3 rows landed correctly."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Rows present', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "    var json = pm.response.json();",
-                  "    pm.expect(json.rows.length).to.eql(3);",
-                  "});"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "3. IVR - Flow",
-      "item": [
-        {
-          "name": "3.1 Create Flow (sample provider-lookup test flow)",
+          "name": "2.3 Create Flow (typed prompts + uploaded audio + lookup, all in one)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{bank_admin_token}}" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Postman Smoke Test Flow\",\n  \"nodes\": [\n    {\n      \"client_id\": \"welcome\",\n      \"type\": \"play\",\n      \"is_start\": true,\n      \"prompt_id\": \"{{prompt_welcome}}\",\n      \"next\": \"menu\"\n    },\n    {\n      \"client_id\": \"menu\",\n      \"type\": \"menu\",\n      \"prompt_id\": \"{{prompt_menu}}\",\n      \"config\": { \"digit_timeout_ms\": 8000 },\n      \"branches\": { \"1\": \"collect_provider\", \"9\": \"hangup_node\" }\n    },\n    {\n      \"client_id\": \"collect_provider\",\n      \"type\": \"collect_input\",\n      \"prompt_id\": \"{{prompt_collect}}\",\n      \"config\": { \"max_digits\": 10, \"min_digits\": 10, \"terminator\": \"#\", \"store_as\": \"provider_number\" },\n      \"next\": \"lookup_provider\"\n    },\n    {\n      \"client_id\": \"lookup_provider\",\n      \"type\": \"lookup\",\n      \"config\": { \"source_type\": \"table\", \"table_id\": \"{{lookup_table_id}}\", \"lookup_key\": \"provider_number\", \"response_var_prefix\": \"provider_\" },\n      \"branches\": { \"found\": \"speak_result\", \"not_found\": \"not_found_node\" }\n    },\n    {\n      \"client_id\": \"speak_result\",\n      \"type\": \"play\",\n      \"prompt_id\": \"Your provider is {{provider_name}}. Thank you for calling.\",\n      \"next\": \"hangup_node\"\n    },\n    {\n      \"client_id\": \"not_found_node\",\n      \"type\": \"play\",\n      \"prompt_id\": \"{{prompt_notfound}}\",\n      \"next\": \"hangup_node\"\n    },\n    {\n      \"client_id\": \"hangup_node\",\n      \"type\": \"hangup\"\n    }\n  ]\n}"
+              "raw": "{\n  \"name\": \"Apex Bank - Account Balance Flow\",\n  \"nodes\": [\n    {\n      \"client_id\": \"welcome\",\n      \"type\": \"play\",\n      \"is_start\": true,\n      \"prompt_id\": \"{{prompt_welcome_audio}}\",\n      \"next\": \"menu\"\n    },\n    {\n      \"client_id\": \"menu\",\n      \"type\": \"menu\",\n      \"prompt_text\": \"Press 1 to check your account balance. Press 9 to end this call.\",\n      \"config\": { \"digit_timeout_ms\": 8000 },\n      \"branches\": { \"1\": \"collect_account\", \"9\": \"hangup_node\" }\n    },\n    {\n      \"client_id\": \"collect_account\",\n      \"type\": \"collect_input\",\n      \"prompt_text\": \"Please enter your ten digit account number, then press the pound key.\",\n      \"config\": { \"max_digits\": 10, \"min_digits\": 10, \"terminator\": \"#\", \"store_as\": \"provider_number\" },\n      \"next\": \"lookup_account\"\n    },\n    {\n      \"client_id\": \"lookup_account\",\n      \"type\": \"lookup\",\n      \"config\": { \"source_type\": \"table\", \"table_id\": \"{{lookup_table_id}}\", \"lookup_key\": \"provider_number\", \"response_var_prefix\": \"provider_\" },\n      \"branches\": { \"found\": \"speak_result\", \"not_found\": \"not_found_node\" }\n    },\n    {\n      \"client_id\": \"speak_result\",\n      \"type\": \"play\",\n      \"prompt_text\": \"Thank you. Your account is registered to {{provider_name}}. Goodbye.\",\n      \"next\": \"hangup_node\"\n    },\n    {\n      \"client_id\": \"not_found_node\",\n      \"type\": \"play\",\n      \"prompt_text\": \"Sorry, we could not find that account number in our records.\",\n      \"next\": \"hangup_node\"\n    },\n    {\n      \"client_id\": \"hangup_node\",\n      \"type\": \"hangup\"\n    }\n  ]\n}"
             },
             "url": { "raw": "{{baseUrl}}/api/ivr/flows", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "flows"] },
-            "description": "Exercises every node type relevant to your ask in one small flow: play, menu with real DTMF branching (1 -> lookup, 9 -> hangup), collect_input (full number entry), lookup against the hosted table, a dynamic branch on found/not_found, and a TTS-spoken prompt ('Your provider is {{'{{'}}provider_name{{'}}'}}...') that only gets synthesized at call time via Piper. IMPORTANT: {{'{{'}}provider_name{{'}}'}} in speak_result's prompt_id is NOT a Postman variable - leave it exactly as-is, it's a flow-engine template substituted live from the lookup result. This is a sample/test flow only; build your real flows the same way with your own content."
+            "description": "One flow, demonstrating everything: welcome uses an uploaded recording (prompt_id); menu/collect_account/not_found_node are just TYPED text (prompt_text) - no audio file needed, Piper speaks them; speak_result's prompt_text contains {{'{{'}}provider_name{{'}}'}}, a value that only exists once the lookup runs mid-call - that's a flow VARIABLE, not a Postman variable, leave it exactly as-is. Real DTMF branching (1 -> lookup, 9 -> hangup), a data lookup, and dynamic TTS readback, all client-authored as plain JSON. This is a sample scenario - design your actual flow the same way, with your own content."
           },
           "event": [
             {
@@ -302,7 +294,7 @@
                   "    pm.response.to.have.status(201);",
                   "    var json = pm.response.json();",
                   "    pm.expect(json.id).to.be.a('string');",
-                  "    pm.collectionVariables.set('flow_id', json.id);",
+                  "    pm.collectionVariables.set('bank_flow_id', json.id);",
                   "});"
                 ]
               }
@@ -310,12 +302,12 @@
           ]
         },
         {
-          "name": "3.2 Get Flow",
+          "name": "2.4 Get Flow (verify it saved correctly)",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/ivr/flows/{{flow_id}}", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "flows", "{{flow_id}}"] },
-            "description": "Reads the flow back - confirms all 7 nodes and their branches persisted correctly, with client_id references resolved to real DB UUIDs."
+            "header": [{ "key": "Authorization", "value": "Bearer {{bank_admin_token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/ivr/flows/{{bank_flow_id}}", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "flows", "{{bank_flow_id}}"] },
+            "description": "Reads the flow back - confirms all 7 nodes persisted, with client_id references resolved to real database UUIDs, and prompt_text stored alongside prompt_id per node."
           },
           "event": [
             {
@@ -336,23 +328,23 @@
       ]
     },
     {
-      "name": "4. Campaign",
+      "name": "3. Apex Bank Runs a Campaign",
       "item": [
         {
-          "name": "4.1 Create Broadcast Campaign (linked to the IVR flow)",
+          "name": "3.1 Create Campaign (atomically linked to the flow)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "header": [{ "key": "Authorization", "value": "Bearer {{bank_admin_token}}" }],
             "body": {
               "mode": "formdata",
               "formdata": [
-                { "key": "name", "type": "text", "value": "Postman Test Campaign" },
-                { "key": "phoneNumbers", "type": "text", "value": "[\"{{test_phone_number}}\"]" },
-                { "key": "ivrFlowId", "type": "text", "value": "{{flow_id}}" }
+                { "key": "name", "type": "text", "value": "Apex Bank Balance Reminders" },
+                { "key": "phoneNumbers", "type": "text", "value": "[{\"phoneNumber\": \"{{test_phone_number}}\", \"customerName\": \"Test Customer\", \"languageCode\": \"{{test_language_code}}\"}]" },
+                { "key": "ivrFlowId", "type": "text", "value": "{{bank_flow_id}}" }
               ]
             },
             "url": { "raw": "{{baseUrl}}/api/campaigns/broadcast", "host": ["{{baseUrl}}"], "path": ["api", "campaigns", "broadcast"] },
-            "description": "Requires login now (Workstream 9) and gets scoped to the caller's own tenant - previously zero-auth, which meant every campaign landed under one shared default tenant regardless of who created it. REPLACE {{test_phone_number}} (collection variable, currently a placeholder) with your own real number before running the collection if you want this to actually ring your phone once the gateway is back online. ivrFlowId links the campaign to the flow in the SAME insert as campaign creation - passing it up front (rather than a separate activate call afterward) closes a real race: the worker polls every 2s and can claim a 'pending' lead before a later link call takes effect, dispatching it through the plain audio_url path instead of the IVR engine. No audio file is needed here since the flow supplies its own prompts.\n\nResponse status will be \"preparing\", not \"running\", if the flow has any static prompt_text - the backend pre-synthesizes every prompt for every language your leads use BEFORE the worker is allowed to dial anyone (closes a real ~20s dead-air bug on the first live call to a never-before-spoken phrase). Poll GET /api/campaigns/{{campaign_id}} (step 5.2) until status flips to \"running\" before expecting a call."
+            "description": "REPLACE {{test_phone_number}} with your own real number if you want this to actually ring you. {{test_language_code}} defaults to en-US - change to hi-IN or mr-IN to test another installed voice, per-lead, with zero flow changes.\n\nivrFlowId links the campaign to the flow in the SAME insert as creation (no separate activate-after-create race). No audio file is required - the flow supplies its own prompts.\n\nResponse status will be \"preparing\" (not \"running\") since this flow has static prompt_text - the backend pre-synthesizes every prompt for every language your leads use BEFORE the worker is allowed to dial anyone. This is what closes the ~20-second dead-air bug that used to happen live on the first call to a never-before-spoken phrase. Move on to 3.2 and poll until it flips."
           },
           "event": [
             {
@@ -364,7 +356,8 @@
                   "    pm.response.to.have.status(201);",
                   "    var json = pm.response.json();",
                   "    pm.expect(json.campaignId).to.be.a('string');",
-                  "    pm.collectionVariables.set('campaign_id', json.campaignId);",
+                  "    pm.expect(['preparing', 'running']).to.include(json.status);",
+                  "    pm.collectionVariables.set('bank_campaign_id', json.campaignId);",
                   "});"
                 ]
               }
@@ -372,12 +365,12 @@
           ]
         },
         {
-          "name": "4.2 List Campaigns",
+          "name": "3.2 Poll Until Status = running",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/campaigns", "host": ["{{baseUrl}}"], "path": ["api", "campaigns"] },
-            "description": "Requires login now (Workstream 9) - only shows campaigns belonging to the caller's own tenant."
+            "header": [{ "key": "Authorization", "value": "Bearer {{bank_admin_token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/campaigns/{{bank_campaign_id}}", "host": ["{{baseUrl}}"], "path": ["api", "campaigns", "{{bank_campaign_id}}"] },
+            "description": "Click Send repeatedly (every few seconds) until campaign.status reads \"running\" instead of \"preparing\" - that's your signal every prompt for this campaign's language(s) is already sitting on the Asterisk box, so the very first call plays audio instantly instead of going silent for ~20s. While status is \"preparing\", the worker will NOT touch this campaign's leads at all (dial_status stays \"pending\", attempts stays 0) - check the leads array below to see that for yourself.\n\nAlso confirms campaign.ivr_flow_id equals bank_flow_id from step 2.3 - proof the whole chain wired together."
           },
           "event": [
             {
@@ -385,7 +378,32 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Campaign list returned', function () {",
+                  "pm.test('Campaign is linked to the right flow', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.campaign.ivr_flow_id).to.eql(pm.collectionVariables.get('bank_flow_id'));",
+                  "    console.log('campaign status:', json.campaign.status, '| lead dial_status:', json.leads[0] ? json.leads[0].dial_status : 'n/a');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3.3 List Campaigns (Apex Bank sees only its own)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{bank_admin_token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/campaigns", "host": ["{{baseUrl}}"], "path": ["api", "campaigns"] },
+            "description": "Scoped to the caller's own tenant - only shows campaigns Apex Bank itself created, regardless of how many other clients are running campaigns on the same platform."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Campaign list returned, all belong to this tenant', function () {",
                   "    pm.response.to.have.status(200);",
                   "    pm.expect(pm.response.json()).to.be.an('array');",
                   "});"
@@ -397,23 +415,19 @@
       ]
     },
     {
-      "name": "5. IVR - Activate & Link Campaign",
+      "name": "4. Prove Multi-Tenant Isolation",
       "item": [
         {
-          "name": "5.1 Mark Flow Active",
+          "name": "4.1 Swift Loans Creates Its Own (Different) Flow",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{loan_admin_token}}" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"campaignId\": \"{{campaign_id}}\"\n}"
+              "raw": "{\n  \"name\": \"Swift Loans - Recovery Flow\",\n  \"nodes\": [\n    {\n      \"client_id\": \"welcome\",\n      \"type\": \"play\",\n      \"is_start\": true,\n      \"prompt_text\": \"This is Swift Loan Recovery calling about your overdue payment. Press 1 to speak with an agent, or 9 to end this call.\",\n      \"next\": \"hangup_node\"\n    },\n    {\n      \"client_id\": \"hangup_node\",\n      \"type\": \"hangup\"\n    }\n  ]\n}"
             },
-            "url": {
-              "raw": "{{baseUrl}}/api/ivr/flows/{{flow_id}}/activate",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "ivr", "flows", "{{flow_id}}", "activate"]
-            },
-            "description": "The campaign is already linked to this flow (set atomically in step 4.1's ivrFlowId, closing the dispatch race a separate link-after-creation call would have). This step just marks the flow's own is_active flag true - re-sending campaignId here is harmless/idempotent, not what actually creates the link."
+            "url": { "raw": "{{baseUrl}}/api/ivr/flows", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "flows"] },
+            "description": "A completely different business scenario, authored by a completely different client, with zero code changes on the backend. Needed here so the isolation checks below have something real to test against in both directions."
           },
           "event": [
             {
@@ -421,11 +435,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Flow activated and linked', function () {",
-                  "    pm.response.to.have.status(200);",
+                  "pm.test('Loan recovery flow created', function () {",
+                  "    pm.response.to.have.status(201);",
                   "    var json = pm.response.json();",
-                  "    pm.expect(json.is_active).to.eql(true);",
-                  "    pm.expect(json.campaignId).to.eql(pm.collectionVariables.get('campaign_id'));",
+                  "    pm.collectionVariables.set('loan_flow_id', json.id);",
                   "});"
                 ]
               }
@@ -433,12 +446,12 @@
           ]
         },
         {
-          "name": "5.2 Verify Campaign Report Shows ivr_flow_id",
+          "name": "4.2 Swift Loans Tries to Read Apex Bank's Flow -> 404",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/campaigns/{{campaign_id}}", "host": ["{{baseUrl}}"], "path": ["api", "campaigns", "{{campaign_id}}"] },
-            "description": "Final proof the whole chain wired together correctly: campaign.ivr_flow_id should equal the flow_id from step 3.1. Once the Dinstar gateway is back online, the worker will dispatch this campaign's lead(s) through the IVR flow automatically - no further API calls needed."
+            "header": [{ "key": "Authorization", "value": "Bearer {{loan_admin_token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/ivr/flows/{{bank_flow_id}}", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "flows", "{{bank_flow_id}}"] },
+            "description": "Every /api/ivr/* read filters WHERE tenant_id = caller's own tenant - a flow belonging to a different tenant isn't 403 Forbidden, it's 404 Not Found, exactly as if it doesn't exist. No information leak either way."
           },
           "event": [
             {
@@ -446,10 +459,76 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Campaign is linked to the IVR flow', function () {",
+                  "pm.test('Blocked - flow not found for this tenant', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.3 Apex Bank Tries to Read Swift Loans' Flow -> 404",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{bank_admin_token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/ivr/flows/{{loan_flow_id}}", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "flows", "{{loan_flow_id}}"] },
+            "description": "Same check, other direction - confirms isolation isn't one-way."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Blocked - flow not found for this tenant', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.4 Swift Loans Tries to Read Apex Bank's Campaign -> 404",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{loan_admin_token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/campaigns/{{bank_campaign_id}}", "host": ["{{baseUrl}}"], "path": ["api", "campaigns", "{{bank_campaign_id}}"] },
+            "description": "Campaigns are scoped the exact same way as flows (Workstream 9) - previously campaign creation was zero-auth and every campaign landed under one shared default tenant regardless of who created it; this proves that's fixed too."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Blocked - campaign not found for this tenant', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.5 Apex Bank Confirms It Can Still Read Its Own Flow -> 200",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{bank_admin_token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/ivr/flows/{{bank_flow_id}}", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "flows", "{{bank_flow_id}}"] },
+            "description": "The isolation is per-tenant, not a blanket lockout - Apex Bank's own admin still sees everything that belongs to Apex Bank, fully and correctly."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Own flow still fully readable', function () {",
                   "    pm.response.to.have.status(200);",
                   "    var json = pm.response.json();",
-                  "    pm.expect(json.campaign.ivr_flow_id).to.eql(pm.collectionVariables.get('flow_id'));",
+                  "    pm.expect(json.id).to.eql(pm.collectionVariables.get('bank_flow_id'));",
                   "});"
                 ]
               }
@@ -459,10 +538,10 @@
       ]
     },
     {
-      "name": "6. Agent & Calls (optional, Workstream 7)",
+      "name": "5. Agent & Calls (optional, Workstream 7)",
       "item": [
         {
-          "name": "6.1 Create Test Agent",
+          "name": "5.1 Create Test Agent",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{admin_token}}" }],
@@ -471,7 +550,7 @@
               "raw": "{\n  \"username\": \"{{agent_username}}\",\n  \"password\": \"{{agent_password}}\"\n}"
             },
             "url": { "raw": "{{baseUrl}}/api/auth/agents", "host": ["{{baseUrl}}"], "path": ["api", "auth", "agents"] },
-            "description": "Creates a fresh test agent (rather than reusing the existing seeded agent1) and lazily provisions its SIP endpoint. If this username already exists from a previous run, you'll get a 409 - that's fine, just skip to 6.2."
+            "description": "Creates a fresh test agent (rather than reusing the existing seeded agent1) and lazily provisions its SIP endpoint. If this username already exists from a previous run, you'll get a 409 - that's fine, just skip to 5.2."
           },
           "event": [
             {
@@ -492,7 +571,7 @@
           ]
         },
         {
-          "name": "6.2 Agent Login",
+          "name": "5.2 Agent Login",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -520,7 +599,7 @@
           ]
         },
         {
-          "name": "6.3 Get My SIP Credentials",
+          "name": "5.3 Get My SIP Credentials",
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{agent_token}}" }],
@@ -530,7 +609,7 @@
           "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('SIP credentials returned', function () { pm.response.to.have.status(200); });"] } }]
         },
         {
-          "name": "6.4 Agent Go Ready",
+          "name": "5.4 Agent Go Ready",
           "request": {
             "method": "POST",
             "header": [{ "key": "Authorization", "value": "Bearer {{agent_token}}" }],
@@ -540,7 +619,7 @@
           "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Agent is idle', function () { pm.response.to.have.status(200); });"] } }]
         },
         {
-          "name": "6.5 Agent Click-to-Dial",
+          "name": "5.5 Agent Click-to-Dial",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{agent_token}}" }],
@@ -568,7 +647,7 @@
           ]
         },
         {
-          "name": "6.6 Submit Disposition",
+          "name": "5.6 Submit Disposition",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{agent_token}}" }],
@@ -582,7 +661,7 @@
           "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Disposition submitted (see request description if this 404s)', function () { pm.response.to.have.status(200); });"] } }]
         },
         {
-          "name": "6.7 Agent Break",
+          "name": "5.7 Agent Break",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{agent_token}}" }],
@@ -592,7 +671,7 @@
           "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Break logged', function () { pm.response.to.have.status(200); });"] } }]
         },
         {
-          "name": "6.8 Get Agent Bucket",
+          "name": "5.8 Get Agent Bucket",
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{agent_token}}" }],
@@ -603,10 +682,10 @@
       ]
     },
     {
-      "name": "7. Gateway Telemetry (zero-auth)",
+      "name": "6. Gateway Telemetry (zero-auth)",
       "item": [
         {
-          "name": "7.1 List Gateways",
+          "name": "6.1 List Gateways",
           "request": {
             "method": "GET",
             "header": [],
@@ -629,7 +708,7 @@
           ]
         },
         {
-          "name": "7.2 Port Allocations",
+          "name": "6.2 Port Allocations",
           "request": {
             "method": "GET",
             "header": [],
@@ -638,32 +717,32 @@
           "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Ports returned', function () { pm.response.to.have.status(200); });"] } }]
         },
         {
-          "name": "7.3 Live Gateway Status (Dinstar)",
+          "name": "6.3 Live Gateway Status (Dinstar)",
           "request": {
             "method": "GET",
             "header": [],
             "url": { "raw": "{{baseUrl}}/api/gateways/{{gateway_id}}/live", "host": ["{{baseUrl}}"], "path": ["api", "gateways", "{{gateway_id}}", "live"] },
-            "description": "Queries the physical Dinstar box directly. EXPECTED to return 502 'Dinstar gateway unreachable' right now, since it's been offline since 2026-08-03 - that's correct fail-fast behavior (Workstream 4), not a bug. Re-run this once the gateway's back to confirm it flips to real port data."
+            "description": "Queries the physical Dinstar box directly. Returns 502 'Dinstar gateway unreachable' while the gateway is offline - that's correct fail-fast behavior (Workstream 4), not a bug."
           },
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Gateway status request completed (502 expected while offline)', function () { pm.expect([200, 502]).to.include(pm.response.code); });"] } }]
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Gateway status request completed', function () { pm.expect([200, 502]).to.include(pm.response.code); });"] } }]
         }
       ]
     },
     {
-      "name": "8. Analytics",
+      "name": "7. Analytics",
       "item": [
         {
-          "name": "8.1 Live Metrics",
+          "name": "7.1 Live Metrics",
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
             "url": { "raw": "{{baseUrl}}/api/analytics/live", "host": ["{{baseUrl}}"], "path": ["api", "analytics", "live"] },
-            "description": "NOTE: this endpoint's role check only allows client_admin/mentor/team_leader, not super_admin - so with admin_token this will correctly 403. Log in as a client_admin-role user to actually see data here; included for completeness."
+            "description": "NOTE: this endpoint's role check only allows client_admin/mentor/team_leader, not super_admin - so with admin_token this will correctly 403. Try with {{bank_admin_token}} instead to actually see data."
           },
           "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Request completed (403 expected for super_admin)', function () { pm.expect([200, 403]).to.include(pm.response.code); });"] } }]
         },
         {
-          "name": "8.2 Call Logs",
+          "name": "7.2 Call Logs",
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
