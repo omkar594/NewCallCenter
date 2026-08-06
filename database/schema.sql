@@ -237,6 +237,7 @@ CREATE TABLE campaign_leads (
     attempts INTEGER DEFAULT 0,
     amd_status VARCHAR(20), -- Workstream 7: HUMAN/MACHINE/NOTSURE from the dialplan's AMD()
     dtmf_selected VARCHAR(20), -- Workstream 7: which DTMF menu option the caller picked, if any
+    language_code VARCHAR(10) DEFAULT 'en-US', -- Workstream 9: per-lead TTS language, see ivrFlowEngine.js
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -357,6 +358,7 @@ CREATE TABLE ivr_nodes (
     )),
     is_start BOOLEAN NOT NULL DEFAULT FALSE,
     prompt_id VARCHAR(255),
+    prompt_text TEXT, -- Workstream 9: always synthesized via TTS, no {{variable}} required
     config JSONB NOT NULL DEFAULT '{}'::jsonb,
     next_node_id UUID REFERENCES ivr_nodes(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

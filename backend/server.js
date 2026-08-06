@@ -125,6 +125,11 @@ async function initSchema() {
       CREATE INDEX IF NOT EXISTS idx_leads_dial_status ON campaign_leads(dial_status, updated_at);
       CREATE INDEX IF NOT EXISTS idx_leads_campaign_id ON campaign_leads(campaign_id);
 
+      -- Workstream 9: lets a client tag each lead with its own known language (CSV/JSON upload)
+      -- so one IVR flow speaks correctly to every customer without a language-selection menu -
+      -- see ivrFlowEngine.js's state.languageCode and ttsService.js's PIPER_VOICE_MODELS map.
+      ALTER TABLE campaign_leads ADD COLUMN IF NOT EXISTS language_code VARCHAR(10) DEFAULT 'en-US';
+
       -- Gateway Telemetry API tables (GET /api/gateways etc.) - these were defined in
       -- database/schema.sql but that file was never actually run against production, only
       -- this function was, so these tables never existed and every gateway-management
@@ -385,6 +390,12 @@ async function initSchema() {
           next_node_id UUID REFERENCES ivr_nodes(id) ON DELETE SET NULL,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
+      -- Workstream 9: an explicit "just speak this text" field, always synthesized via TTS
+      -- regardless of whether it contains {{variable}} placeholders - prompt_id's existing
+      -- {{var}}-detection behavior is unchanged, this is an additive second option so a client
+      -- authoring a fixed sentence with no dynamic content doesn't have to fake a variable or
+      -- upload audio just to get it spoken. See ivrFlowEngine.js's resolvePromptMedia().
+      ALTER TABLE ivr_nodes ADD COLUMN IF NOT EXISTS prompt_text TEXT;
       CREATE INDEX IF NOT EXISTS idx_ivr_nodes_flow_id ON ivr_nodes(flow_id);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_ivr_nodes_one_start_per_flow
           ON ivr_nodes(flow_id) WHERE is_start = true;

@@ -116,7 +116,7 @@ async function getMaxConcurrentCalls() {
 async function claimNextPendingLead() {
   const result = await pool.query(`
     WITH target_lead AS (
-      SELECT cl.id, cl.phone_number, cl.customer_name, cl.campaign_id, vc.audio_url, vc.allowed_ports, vc.ivr_flow_id
+      SELECT cl.id, cl.phone_number, cl.customer_name, cl.campaign_id, cl.language_code, vc.audio_url, vc.allowed_ports, vc.ivr_flow_id
       FROM campaign_leads cl
       JOIN voice_campaigns vc ON cl.campaign_id = vc.id
       WHERE cl.dial_status = 'pending' AND vc.status IN ('running', 'pending')
@@ -140,11 +140,24 @@ async function claimNextPendingLead() {
       target_lead.phone_number,
       target_lead.customer_name,
       target_lead.campaign_id,
+      target_lead.language_code,
       target_lead.audio_url,
       target_lead.allowed_ports,
       target_lead.ivr_flow_id;
   `);
   return result.rows[0] || null;
+}
+
+// Workstream 9: AMD costs several real seconds of dead air before the caller hears anything
+// (it must listen to real audio before it can decide human vs. machine) - only worth paying
+// for flows that actually branch on the result. A flow with no amd_check node never reads
+// ${AMDSTATUS} at all, so extensions.conf skips AMD() entirely for it (see NEEDS_AMD below).
+async function flowNeedsAmd(flowId) {
+  const result = await pool.query(
+    `SELECT EXISTS(SELECT 1 FROM ivr_nodes WHERE flow_id = $1 AND type = 'amd_check') AS needed`,
+    [flowId]
+  );
+  return result.rows[0]?.needed || false;
 }
 
 // Puts a lead back in the queue instead of finalizing it as a permanent failure. Used only
@@ -201,6 +214,8 @@ async function dispatchLead(lead) {
   };
   if (lead.ivr_flow_id) {
     originateVars.FLOW_ID = lead.ivr_flow_id;
+    originateVars.LANGUAGE_CODE = lead.language_code || '';
+    originateVars.NEEDS_AMD = (await flowNeedsAmd(lead.ivr_flow_id)) ? 'true' : 'false';
   } else {
     originateVars.CAMPAIGN_AUDIO_FILE = lead.audio_url || '';
   }

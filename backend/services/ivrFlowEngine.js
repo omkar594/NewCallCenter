@@ -25,18 +25,30 @@ const MAX_STEPS_PER_CALL = 300;
 // nothing about a flow's definition is ever mutated at runtime.
 const activeCalls = new Map();
 
-// A prompt_id containing {{variable}} placeholders is a TTS template, not a literal
-// pre-recorded filename - synthesized on the fly (Workstream 8.9) with the call's current flow
-// variables substituted in, cached by content hash, and delivered through the same
-// transcode+SFTP pipeline uploaded campaign audio uses. Everything else is treated as before:
-// a literal basename already sitting in the Asterisk box's campaign_audio sounds directory.
-async function resolvePromptMedia(promptId, vars) {
-  if (hasVariablePlaceholders(promptId)) {
-    const text = substituteVars(promptId, vars);
-    const basename = await synthesizeAndDeliver(text);
+// Three ways a node can say what to play, in priority order:
+//   1. node.prompt_text set - ALWAYS synthesized via TTS (Workstream 9), whether or not it
+//      contains {{variable}} placeholders. This is what lets a client just type a fixed
+//      sentence and have it spoken, with no {{var}} trick and no audio upload required.
+//   2. node.prompt_id containing {{variable}} placeholders - the older TTS path (Workstream
+//      8.9), kept exactly as-is for backward compatibility with flows already authored this way.
+//   3. node.prompt_id as a literal string - a pre-recorded filename already delivered to the
+//      Asterisk box's campaign_audio sounds directory (Workstream 3/8.13).
+// TTS synthesis is always run in the call's own language (state.languageCode - Workstream 9),
+// set from the lead's language_code at dispatch time and defaulting to ttsService's own default
+// when a lead/flow never specifies one.
+async function resolvePromptMedia(node, state) {
+  const { vars, languageCode } = state;
+  if (node.prompt_text) {
+    const text = substituteVars(node.prompt_text, vars);
+    const basename = await synthesizeAndDeliver(text, { languageCode });
     return `sound:campaign_audio/${basename}`;
   }
-  return `sound:campaign_audio/${promptId}`;
+  if (hasVariablePlaceholders(node.prompt_id)) {
+    const text = substituteVars(node.prompt_id, vars);
+    const basename = await synthesizeAndDeliver(text, { languageCode });
+    return `sound:campaign_audio/${basename}`;
+  }
+  return `sound:campaign_audio/${node.prompt_id}`;
 }
 
 async function playAndWait(channelId, media, timeoutMs = 30000) {
@@ -78,7 +90,7 @@ function followBranch(node, state, flowCtx, matchValue) {
 }
 
 async function handlePlay(node, state) {
-  const media = await resolvePromptMedia(node.prompt_id, state.vars);
+  const media = await resolvePromptMedia(node, state);
   await playAndWait(state.channelId, media);
   return node.next_node_id;
 }
@@ -88,7 +100,7 @@ async function handlePlay(node, state) {
 // Interruptible like the dialplan's Background() was: the prompt is cut short the instant a
 // digit arrives instead of forcing the caller to hear it out first.
 async function handleMenu(node, state, flowCtx) {
-  const menuMedia = await resolvePromptMedia(node.prompt_id, state.vars);
+  const menuMedia = await resolvePromptMedia(node, state);
   const playback = await ariService.playMedia(state.channelId, menuMedia);
   const digitTimeoutMs = node.config?.digit_timeout_ms || DEFAULT_MENU_DIGIT_TIMEOUT_MS;
 
@@ -122,8 +134,8 @@ async function handleCollectInput(node, state) {
   const terminator = config.terminator !== undefined ? config.terminator : '#';
   const timeoutMs = config.timeout_ms || DEFAULT_COLLECT_TIMEOUT_MS;
 
-  if (node.prompt_id) {
-    const media = await resolvePromptMedia(node.prompt_id, state.vars);
+  if (node.prompt_id || node.prompt_text) {
+    const media = await resolvePromptMedia(node, state);
     await playAndWait(state.channelId, media);
   }
 
@@ -263,8 +275,8 @@ async function handleOptout(node, state) {
   } catch (err) {
     console.error(`[IvrFlowEngine] Optout node ${node.id} failed: ${err.message}`);
   }
-  if (node.prompt_id) {
-    const media = await resolvePromptMedia(node.prompt_id, state.vars);
+  if (node.prompt_id || node.prompt_text) {
+    const media = await resolvePromptMedia(node, state);
     await playAndWait(state.channelId, media);
   }
   return node.next_node_id;
@@ -307,9 +319,9 @@ async function executeNode(node, state, flowCtx) {
   return handler(node, state, flowCtx);
 }
 
-async function runFlow(channelId, flowId, leadId, callerNumber) {
+async function runFlow(channelId, flowId, leadId, callerNumber, languageCode) {
   const flowCtx = await loadFlow(flowId);
-  const state = { channelId, flowId, leadId, callerNumber, vars: {}, leftStasis: false };
+  const state = { channelId, flowId, leadId, callerNumber, languageCode, vars: {}, leftStasis: false };
   activeCalls.set(channelId, state);
 
   await ariService.answerChannel(channelId);
@@ -338,14 +350,17 @@ async function runFlow(channelId, flowId, leadId, callerNumber) {
 
 ariService.on('StasisStart', (evt) => {
   const channelId = evt.channel?.id;
-  const [flowId, leadId] = evt.args || [];
+  // Workstream 9: 3rd arg is the lead's language_code (bulkCampaignWorker.js -> extensions.conf's
+  // Stasis(ivr_engine,${FLOW_ID},${LEAD_ID},${LANGUAGE_CODE})), undefined on older/plain calls -
+  // resolvePromptMedia()/synthesizeAndDeliver() fall back to ttsService's own default in that case.
+  const [flowId, leadId, languageCode] = evt.args || [];
   if (!channelId || !flowId) {
     console.error(`[IvrFlowEngine] StasisStart with no channel/flowId (args=${JSON.stringify(evt.args)}) - hanging up.`);
     if (channelId) ariService.hangupChannel(channelId).catch(() => {});
     return;
   }
   const callerNumber = evt.channel?.caller?.number || '';
-  runFlow(channelId, flowId, leadId, callerNumber).catch((err) => {
+  runFlow(channelId, flowId, leadId, callerNumber, languageCode).catch((err) => {
     console.error(`[IvrFlowEngine] Flow execution failed for channel ${channelId}: ${err.message}`);
     ariService.hangupChannel(channelId).catch(() => {});
     activeCalls.delete(channelId);

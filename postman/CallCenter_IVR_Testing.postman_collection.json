@@ -6,7 +6,7 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "https://callcenter-edpl.onrender.com" },
+    { "key": "baseUrl", "value": "https://newcallcenter.onrender.com" },
     { "key": "admin_username", "value": "bootstrap_admin" },
     { "key": "admin_password", "value": "AdminPass123!" },
     { "key": "admin_token", "value": "" },

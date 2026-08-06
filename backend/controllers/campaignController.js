@@ -10,6 +10,10 @@ import { normalizePhoneNumber } from '../utils/phoneNormalizer.js';
 
 const PHONE_HEADER_ALIASES = ['phone', 'phone_number', 'phonenumber', 'number', 'mobile', 'msisdn'];
 const NAME_HEADER_ALIASES = ['name', 'customer_name', 'customername', 'full_name'];
+// Workstream 9: lets a client tag each lead with its own language in the same CSV, so one IVR
+// flow speaks correctly to every customer - see campaign_leads.language_code / ivrFlowEngine.js.
+const LANGUAGE_HEADER_ALIASES = ['language', 'language_code', 'lang'];
+const DEFAULT_LEAD_LANGUAGE_CODE = 'en-US';
 
 // Parses a lead CSV using its header row (quote/escape-aware), instead of assuming
 // column position, so "name,phone" and "phone,name" files both work correctly.
@@ -25,11 +29,13 @@ function parseLeadsCsv(csvContent) {
   for (const record of records) {
     const phoneKey = PHONE_HEADER_ALIASES.find(k => record[k]);
     const nameKey = NAME_HEADER_ALIASES.find(k => record[k]);
+    const languageKey = LANGUAGE_HEADER_ALIASES.find(k => record[k]);
     const phoneNumber = phoneKey ? String(record[phoneKey]).trim() : '';
     if (!phoneNumber) continue;
     leads.push({
       phoneNumber,
-      customerName: nameKey ? String(record[nameKey]).trim() : 'Valued Customer'
+      customerName: nameKey ? String(record[nameKey]).trim() : 'Valued Customer',
+      languageCode: languageKey ? String(record[languageKey]).trim() : DEFAULT_LEAD_LANGUAGE_CODE
     });
   }
   return leads;
@@ -214,10 +220,18 @@ export async function createBroadcastCampaign(req, res) {
       }
     }
 
-    for (const num of rawNumbers) {
-      const cleanNum = String(num).trim();
+    for (const entry of rawNumbers) {
+      // Workstream 9: each entry may be a bare phone-number string (unchanged) or
+      // {phoneNumber, customerName, languageCode} for callers who want to tag a language
+      // without going through a CSV upload.
+      const isObject = entry && typeof entry === 'object';
+      const cleanNum = String(isObject ? entry.phoneNumber : entry).trim();
       if (cleanNum && !leads.some(l => l.phoneNumber === cleanNum)) {
-        leads.push({ phoneNumber: cleanNum, customerName: 'Contact' });
+        leads.push({
+          phoneNumber: cleanNum,
+          customerName: (isObject && entry.customerName) ? String(entry.customerName).trim() : 'Contact',
+          languageCode: (isObject && entry.languageCode) ? String(entry.languageCode).trim() : DEFAULT_LEAD_LANGUAGE_CODE
+        });
       }
     }
   }
@@ -328,19 +342,21 @@ export async function createBroadcastCampaign(req, res) {
     // Save all leads in a single multi-row INSERT (one round-trip, one transaction) instead
     // of one INSERT per lead - matters once CSVs run into the thousands of rows.
     const valuesSql = leads.map((_, i) => {
-      // Each lead contributes exactly 2 params (phone, name) on top of the shared $1
-      // campaign_id - this was previously stride-3, which skipped a placeholder number
-      // for every lead after the first and left it unreferenced anywhere in the query
-      // text, hence Postgres's "could not determine data type of parameter" error.
-      const base = i * 2;
-      return `($1, $${base + 2}, $${base + 3}, 'pending')`;
+      // Each lead contributes exactly 3 params (phone, name, language) on top of the shared $1
+      // campaign_id - keep this stride and the params loop below in lockstep. A past mismatch
+      // here (stride-3 SQL text with a stride-2 params loop) skipped a placeholder number for
+      // every lead after the first and left it unreferenced, producing Postgres's "could not
+      // determine data type of parameter" error - the params loop right below MUST push exactly
+      // 3 values per lead to match.
+      const base = i * 3;
+      return `($1, $${base + 2}, $${base + 3}, $${base + 4}, 'pending')`;
     }).join(', ');
     const insertParams = [campaign.id];
     for (const lead of leads) {
-      insertParams.push(lead.phoneNumber, lead.customerName);
+      insertParams.push(lead.phoneNumber, lead.customerName, lead.languageCode || DEFAULT_LEAD_LANGUAGE_CODE);
     }
     await executeTenantQuery(null, `
-      INSERT INTO campaign_leads (campaign_id, phone_number, customer_name, dial_status)
+      INSERT INTO campaign_leads (campaign_id, phone_number, customer_name, language_code, dial_status)
       VALUES ${valuesSql}
     `, insertParams);
 

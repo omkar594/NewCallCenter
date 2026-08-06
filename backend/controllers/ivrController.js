@@ -14,6 +14,10 @@ const VALID_NODE_TYPES = new Set([
   'play', 'menu', 'collect_input', 'lookup', 'branch',
   'transfer_queue', 'sms', 'optout', 'amd_check', 'hangup'
 ]);
+// A prompt is mandatory for play/menu (they always speak something); every other type
+// (including collect_input/optout) can run with no prompt at all - see ivrFlowEngine.js's
+// `if (node.prompt_id)` guards on those two handlers.
+const PROMPT_REQUIRED_TYPES = new Set(['play', 'menu']);
 const LOOKUP_TABLE_MAX_ROWS = 50000; // sane cap so one giant CSV can't block the event loop
 const LOOKUP_ROW_INSERT_CHUNK = 500;
 
@@ -45,6 +49,16 @@ function validateFlowBody(body) {
     if (!VALID_NODE_TYPES.has(node.type)) {
       errors.push(`node "${node.client_id}" has invalid type "${node.type}"`);
     }
+    // prompt_id (an uploaded file's basename, or the older {{var}}-in-prompt_id TTS trick) and
+    // prompt_text (always TTS, no {{var}} required - see resolvePromptMedia()) are two ways to
+    // say the same thing - a node must pick exactly one, never both, never neither when required.
+    const hasPromptId = node.prompt_id !== undefined && node.prompt_id !== null && node.prompt_id !== '';
+    const hasPromptText = node.prompt_text !== undefined && node.prompt_text !== null && node.prompt_text !== '';
+    if (hasPromptId && hasPromptText) {
+      errors.push(`node "${node.client_id}" has both prompt_id and prompt_text - use exactly one`);
+    } else if (PROMPT_REQUIRED_TYPES.has(node.type) && !hasPromptId && !hasPromptText) {
+      errors.push(`node "${node.client_id}" (type "${node.type}") needs prompt_id or prompt_text`);
+    }
     if (node.is_start) startCount++;
   }
   if (startCount !== 1) {
@@ -72,9 +86,9 @@ async function persistFlowNodes(client, flowId, nodes) {
   const idByClientId = new Map();
   for (const node of nodes) {
     const result = await client.query(
-      `INSERT INTO ivr_nodes (flow_id, type, is_start, prompt_id, config)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [flowId, node.type, !!node.is_start, node.prompt_id || null, JSON.stringify(node.config || {})]
+      `INSERT INTO ivr_nodes (flow_id, type, is_start, prompt_id, prompt_text, config)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [flowId, node.type, !!node.is_start, node.prompt_id || null, node.prompt_text || null, JSON.stringify(node.config || {})]
     );
     idByClientId.set(node.client_id, result.rows[0].id);
   }
@@ -185,6 +199,7 @@ export async function getFlow(req, res) {
       type: n.type,
       is_start: n.is_start,
       prompt_id: n.prompt_id,
+      prompt_text: n.prompt_text,
       config: n.config,
       next: n.next_node_id,
       branches: branchesByNode.get(n.id) || undefined
