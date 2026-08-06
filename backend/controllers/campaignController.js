@@ -14,6 +14,18 @@ const NAME_HEADER_ALIASES = ['name', 'customer_name', 'customername', 'full_name
 // flow speaks correctly to every customer - see campaign_leads.language_code / ivrFlowEngine.js.
 const LANGUAGE_HEADER_ALIASES = ['language', 'language_code', 'lang'];
 const DEFAULT_LEAD_LANGUAGE_CODE = 'en-US';
+// Same default every other write path in this backend falls back to when a caller (e.g.
+// super_admin, whose JWT tenant_id already points at this same default) doesn't have a distinct
+// tenant of their own - matches ivrController.js's DEFAULT_TENANT_ID.
+const DEFAULT_TENANT_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+
+// Workstream 9: campaigns are now scoped to the authenticated caller's own tenant_id, closing
+// the gap where every campaign previously landed under one shared default tenant regardless of
+// who created it - flows/lookup-tables were already isolated this way (ivrController.js), this
+// makes campaigns match.
+function resolveTenantId(req) {
+  return req.user?.tenant_id || DEFAULT_TENANT_ID;
+}
 
 // Parses a lead CSV using its header row (quote/escape-aware), instead of assuming
 // column position, so "name,phone" and "phone,name" files both work correctly.
@@ -104,7 +116,7 @@ export async function handleOptOutWebhook(req, res) {
 export async function getCampaigns(req, res) {
   try {
     const result = await executeTenantQuery(null, `
-      SELECT 
+      SELECT
         vc.id,
         vc.name,
         vc.audio_url,
@@ -121,9 +133,10 @@ export async function getCampaigns(req, res) {
         COUNT(CASE WHEN cl.dial_status = 'pending' THEN 1 END) AS pending_count
       FROM voice_campaigns vc
       LEFT JOIN campaign_leads cl ON vc.id = cl.campaign_id
+      WHERE vc.tenant_id = $1
       GROUP BY vc.id
       ORDER BY vc.created_at DESC
-    `);
+    `, [resolveTenantId(req)]);
     res.json(result.rows);
   } catch (error) {
     console.error('[CampaignController] getCampaigns failed:', error);
@@ -135,9 +148,12 @@ export async function getCampaigns(req, res) {
 export async function getCampaignReport(req, res) {
   const { id } = req.params;
   try {
+    // tenant_id filter here means a wrong-tenant id 404s exactly like a nonexistent one -
+    // matches ivrController.js's getFlow(), no separate "forbidden" leak distinguishing
+    // "doesn't exist" from "exists but isn't yours".
     const campaignResult = await executeTenantQuery(null, `
-      SELECT * FROM voice_campaigns WHERE id = $1
-    `, [id]);
+      SELECT * FROM voice_campaigns WHERE id = $1 AND tenant_id = $2
+    `, [id, resolveTenantId(req)]);
 
     if (campaignResult.rows.length === 0) {
       return res.status(404).json({ error: 'Campaign not found' });
@@ -322,7 +338,10 @@ export async function createBroadcastCampaign(req, res) {
       try { fs.unlinkSync(outputPath); } catch (e) {}
     }
 
-    const defaultTenantId = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+    // Workstream 9: was a hardcoded shared default regardless of who created the campaign -
+    // every client's campaigns landed in the same bucket even though their flows/lookup-tables
+    // were already properly isolated. Now scoped to the authenticated caller's own tenant.
+    const campaignTenantId = resolveTenantId(req);
 
     // Workstream 9: setting ivr_flow_id in this SAME INSERT (rather than requiring a separate
     // POST /api/ivr/flows/:id/activate call afterward) closes a real race - the worker polls
@@ -339,7 +358,7 @@ export async function createBroadcastCampaign(req, res) {
         INSERT INTO voice_campaigns (tenant_id, name, audio_url, status, allowed_ports, total_leads, ivr_flow_id)
         VALUES ($1, $2, $3, 'running', $4, $5, $6)
         RETURNING *
-      `, [defaultTenantId, name, audioFilename, parsedPorts, leads.length, ivrFlowIdValue]);
+      `, [campaignTenantId, name, audioFilename, parsedPorts, leads.length, ivrFlowIdValue]);
     } catch (err) {
       if (err.message.includes('tenant_id')) {
         campaignResult = await executeTenantQuery(null, `

@@ -4,6 +4,7 @@ import os from 'os';
 import fs from 'fs';
 import path from 'path';
 import { getCampaigns, getCampaignReport, createBroadcastCampaign, handleCampaignCallback, handleOptOutWebhook } from '../controllers/campaignController.js';
+import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 
 const AUDIO_FIELDS = new Set(['broadcastAudio', 'audioFile', 'audio', 'file']);
 const CSV_FIELDS = new Set(['leadsCsv', 'csv']);
@@ -53,24 +54,31 @@ const optionalUpload = (req, res, next) => {
   next();
 };
 
-// Public Zero-Auth REST Endpoints for Standalone Outbound Dialer
+// Workstream 9: campaign creation/listing/reporting now require login and get scoped to the
+// caller's own tenant_id (see campaignController.js's resolveTenantId()) - previously these were
+// zero-auth and every campaign landed under one shared default tenant regardless of who created
+// it, which meant flows/lookup-tables were properly isolated per client but campaigns were not.
+// /callback and /optout stay zero-auth deliberately below - they're hit by Asterisk's dialplan
+// via CURL() during a live call, which has no way to carry a JWT.
+const requireCampaignAccess = [authenticateToken, authorizeRoles(['super_admin', 'client_admin', 'team_leader'])];
 
 // 1. Get all campaigns list
-router.get('/', getCampaigns);
+router.get('/', requireCampaignAccess, getCampaigns);
 
 // 2. Create new Outbound Voice Broadcast Campaign
-router.post('/broadcast', optionalUpload, createBroadcastCampaign);
+router.post('/broadcast', requireCampaignAccess, optionalUpload, createBroadcastCampaign);
 
-// 3. Webhook for Asterisk dialplan to report call status. MUST be registered before '/:id'
-// or Express matches it as a campaign id lookup instead (see server.js history for the bug this fixes).
+// 3. Webhook for Asterisk dialplan to report call status - deliberately zero-auth (see above).
+// MUST be registered before '/:id' or Express matches it as a campaign id lookup instead
+// (see server.js history for the bug this fixes).
 router.get('/callback', handleCampaignCallback);
 
 // 3b. Workstream 7: DTMF-9 opt-out webhook, hit via CURL() from the dialplan the same way
 // /callback is - GET with a query string, since func_curl defaults to GET. Also registered
-// before '/:id' for the same route-shadowing reason as above.
+// before '/:id' for the same route-shadowing reason as above, and deliberately zero-auth too.
 router.get('/optout', handleOptOutWebhook);
 
 // 4. Get campaign detailed status & call progress
-router.get('/:id', getCampaignReport);
+router.get('/:id', requireCampaignAccess, getCampaignReport);
 
 export default router;

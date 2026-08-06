@@ -342,7 +342,7 @@
           "name": "4.1 Create Broadcast Campaign (linked to the IVR flow)",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
             "body": {
               "mode": "formdata",
               "formdata": [
@@ -352,7 +352,7 @@
               ]
             },
             "url": { "raw": "{{baseUrl}}/api/campaigns/broadcast", "host": ["{{baseUrl}}"], "path": ["api", "campaigns", "broadcast"] },
-            "description": "Zero-auth endpoint (matches the existing dialer's public webhook pattern). REPLACE {{test_phone_number}} (collection variable, currently a placeholder) with your own real number before running the collection if you want this to actually ring your phone once the gateway is back online. ivrFlowId links the campaign to the flow in the SAME insert as campaign creation - passing it up front (rather than a separate activate call afterward) closes a real race: the worker polls every 2s and can claim a 'pending' lead before a later link call takes effect, dispatching it through the plain audio_url path instead of the IVR engine. No audio file is needed here since the flow supplies its own prompts."
+            "description": "Requires login now (Workstream 9) and gets scoped to the caller's own tenant - previously zero-auth, which meant every campaign landed under one shared default tenant regardless of who created it. REPLACE {{test_phone_number}} (collection variable, currently a placeholder) with your own real number before running the collection if you want this to actually ring your phone once the gateway is back online. ivrFlowId links the campaign to the flow in the SAME insert as campaign creation - passing it up front (rather than a separate activate call afterward) closes a real race: the worker polls every 2s and can claim a 'pending' lead before a later link call takes effect, dispatching it through the plain audio_url path instead of the IVR engine. No audio file is needed here since the flow supplies its own prompts."
           },
           "event": [
             {
@@ -375,8 +375,9 @@
           "name": "4.2 List Campaigns",
           "request": {
             "method": "GET",
-            "header": [],
-            "url": { "raw": "{{baseUrl}}/api/campaigns", "host": ["{{baseUrl}}"], "path": ["api", "campaigns"] }
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/campaigns", "host": ["{{baseUrl}}"], "path": ["api", "campaigns"] },
+            "description": "Requires login now (Workstream 9) - only shows campaigns belonging to the caller's own tenant."
           },
           "event": [
             {
@@ -435,7 +436,7 @@
           "name": "5.2 Verify Campaign Report Shows ivr_flow_id",
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
             "url": { "raw": "{{baseUrl}}/api/campaigns/{{campaign_id}}", "host": ["{{baseUrl}}"], "path": ["api", "campaigns", "{{campaign_id}}"] },
             "description": "Final proof the whole chain wired together correctly: campaign.ivr_flow_id should equal the flow_id from step 3.1. Once the Dinstar gateway is back online, the worker will dispatch this campaign's lead(s) through the IVR flow automatically - no further API calls needed."
           },
