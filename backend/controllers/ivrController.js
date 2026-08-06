@@ -1,6 +1,10 @@
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { parse as parseCsv } from 'csv-parse/sync';
 import pool from '../config/database.js';
+import { transcodeCampaignAudio } from '../services/audioTranscoder.js';
+import { deliverCampaignAudio } from '../services/audioDeliveryService.js';
 
 // Same default tenant every other write path in this backend falls back to when a caller
 // (e.g. super_admin, whose JWT carries no tenant_id) doesn't have one of their own - matches
@@ -218,6 +222,39 @@ export async function activateFlow(req, res) {
   } catch (err) {
     console.error('[IvrController] activateFlow failed:', err.message);
     res.status(500).json({ error: err.message });
+  }
+}
+
+// Uploads a static prompt audio file for a flow node (the 'play'/'menu'/'collect_input'/'optout'
+// node types' prompt_id field). This is the piece a client actually needs to design a flow
+// end-to-end via the API: createFlow/updateFlow already let them author any number of nodes with
+// any prompt_id string they choose, but nothing previously let them get real audio content onto
+// the Asterisk box for that prompt_id - they'd have had no way to make a client_id-only flow
+// actually speak anything. Reuses the exact same transcode+SFTP-delivery pipeline as campaign
+// broadcast audio (Workstream 3), so Playback() never needs to know whether a file came from here
+// or from a campaign upload.
+export async function uploadPromptAudio(req, res) {
+  const file = req.file;
+  if (!file) {
+    return res.status(400).json({ error: 'Audio file is required (field "audio")' });
+  }
+
+  const targetDir = path.join(os.tmpdir(), 'campaign_audio');
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+  const outputPath = path.join(targetDir, `${Date.now()}_ivr_prompt.wav`);
+
+  try {
+    await transcodeCampaignAudio(file.path, outputPath);
+    const promptId = await deliverCampaignAudio(outputPath);
+    res.status(201).json({ prompt_id: promptId });
+  } catch (err) {
+    console.error('[IvrController] uploadPromptAudio failed:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    try { fs.unlinkSync(file.path); } catch (e) {}
+    try { if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath); } catch (e) {}
   }
 }
 

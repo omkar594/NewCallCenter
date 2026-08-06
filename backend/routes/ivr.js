@@ -7,11 +7,13 @@ import {
   getFlow,
   activateFlow,
   uploadLookupTable,
-  getLookupTable
+  getLookupTable,
+  uploadPromptAudio
 } from '../controllers/ivrController.js';
 import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 
 const MAX_CSV_BYTES = 10 * 1024 * 1024; // matches routes/campaign.js's lead-CSV limit
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // matches routes/campaign.js's broadcast-audio limit
 
 const router = express.Router();
 const upload = multer({
@@ -32,6 +34,23 @@ const uploadCsv = (req, res, next) => {
   });
 };
 
+const uploadAudioMiddleware = multer({
+  dest: os.tmpdir(),
+  limits: { fileSize: MAX_AUDIO_BYTES, files: 1 },
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith('audio/')) {
+      return cb(new Error(`Field "${file.fieldname}" must be an audio file, got ${file.mimetype}`));
+    }
+    cb(null, true);
+  }
+});
+const uploadAudio = (req, res, next) => {
+  uploadAudioMiddleware.single('audio')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message || 'Upload rejected' });
+    next();
+  });
+};
+
 router.use(authenticateToken);
 router.use(authorizeRoles(['super_admin', 'client_admin', 'team_leader']));
 
@@ -47,5 +66,10 @@ router.post('/flows/:id/activate', activateFlow);
 
 router.post('/lookup-tables', uploadCsv, uploadLookupTable);
 router.get('/lookup-tables/:id', getLookupTable);
+
+// Returns { prompt_id } - the caller-supplied audio, transcoded and delivered to the Asterisk
+// box's sounds directory. Use the returned prompt_id as any node's prompt_id when authoring a
+// flow via POST/PUT /flows above (the same tenant-scoped auth already applied to this router).
+router.post('/prompts', uploadAudio, uploadPromptAudio);
 
 export default router;

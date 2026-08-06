@@ -1,0 +1,676 @@
+{
+  "info": {
+    "_postman_id": "b1e6f2b0-4c1a-4a6a-9c1e-7c1f3d5a2b10",
+    "name": "CallCenter - IVR + Campaign Pipeline Test",
+    "description": "Sequential smoke test for the outbound campaign backend: auth, IVR flow authoring (audio upload + lookup table + flow + activation), campaign creation, and the agent/gateway/analytics APIs. Run folders top to bottom - each request's Tests script saves IDs/tokens into collection variables that later requests consume automatically, so you can just hit 'Run collection' or click through in order.\n\nThe IVR flow built in folder 3 is a SAMPLE/TEST flow only (a small provider-lookup demo), meant to prove the pipeline end-to-end - it is not a real production flow. Design your actual flows the same way, through the same requests, with your own content.\n\nNote: the Dinstar SIM gateway is currently offline, so folder 4's campaign will be created and correctly linked to the IVR flow, but won't actually ring a phone until the gateway is back online. Everything up to and including the dial attempt can be verified without it.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://callcenter-edpl.onrender.com" },
+    { "key": "admin_username", "value": "bootstrap_admin" },
+    { "key": "admin_password", "value": "AdminPass123!" },
+    { "key": "admin_token", "value": "" },
+    { "key": "test_phone_number", "value": "+919999999999" },
+    { "key": "prompt_welcome", "value": "" },
+    { "key": "prompt_menu", "value": "" },
+    { "key": "prompt_collect", "value": "" },
+    { "key": "prompt_notfound", "value": "" },
+    { "key": "lookup_table_id", "value": "" },
+    { "key": "flow_id", "value": "" },
+    { "key": "campaign_id", "value": "" },
+    { "key": "agent_username", "value": "test_agent_pm" },
+    { "key": "agent_password", "value": "AgentTest123!" },
+    { "key": "agent_token", "value": "" },
+    { "key": "agent_id", "value": "" },
+    { "key": "call_id", "value": "" },
+    { "key": "gateway_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "0. Setup",
+      "item": [
+        {
+          "name": "0.1 Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] },
+            "description": "No auth required. Confirms the backend is up and shows live postgres/redis/AMI connection status."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Backend is healthy', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('healthy');",
+                  "    pm.expect(json.connections.postgres).to.eql('connected');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "0.2 Admin Login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{admin_username}}\",\n  \"password\": \"{{admin_password}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] },
+            "description": "Logs in as the super_admin bootstrap account. Saves the JWT into {{admin_token}}, used as Bearer auth by every /api/ivr/* and /api/auth/agents request below."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login succeeded, token received', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.token).to.be.a('string');",
+                  "    pm.collectionVariables.set('admin_token', json.token);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. IVR - Upload Prompt Audio",
+      "item": [
+        {
+          "name": "1.1 Upload Prompt: Welcome",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "audio", "type": "file", "src": "/home/cell24x7/Downloads/Project/ofc/Outbound_call/outbound_campaign_module/postman/assets/welcome_test.wav" }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/api/ivr/prompts", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "prompts"] },
+            "description": "Transcodes + delivers the file to the Asterisk box's sounds directory and returns { prompt_id }, the basename to reference in a flow node's prompt_id. Uses postman/assets/welcome_test.wav (a real Piper-generated sample greeting, already in this folder)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Prompt uploaded', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.prompt_id).to.be.a('string');",
+                  "    pm.collectionVariables.set('prompt_welcome', json.prompt_id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.2 Upload Prompt: Menu",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "audio", "type": "file", "src": "/home/cell24x7/Downloads/Project/ofc/Outbound_call/outbound_campaign_module/postman/assets/menu_test.wav" }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/api/ivr/prompts", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "prompts"] },
+            "description": "'Press 1 to look up a provider number. Press 9 to end this call.'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Prompt uploaded', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('prompt_menu', json.prompt_id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.3 Upload Prompt: Collect Input",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "audio", "type": "file", "src": "/home/cell24x7/Downloads/Project/ofc/Outbound_call/outbound_campaign_module/postman/assets/collect_test.wav" }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/api/ivr/prompts", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "prompts"] },
+            "description": "'Please enter a ten digit provider number, then press the pound key.'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Prompt uploaded', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('prompt_collect', json.prompt_id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.4 Upload Prompt: Not Found",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "audio", "type": "file", "src": "/home/cell24x7/Downloads/Project/ofc/Outbound_call/outbound_campaign_module/postman/assets/notfound_test.wav" }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/api/ivr/prompts", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "prompts"] },
+            "description": "'Sorry, that provider number was not found in our records.'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Prompt uploaded', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('prompt_notfound', json.prompt_id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. IVR - Lookup Table",
+      "item": [
+        {
+          "name": "2.1 Upload Lookup Table (Providers CSV)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "name", "type": "text", "value": "Test Providers" },
+                { "key": "keyColumn", "type": "text", "value": "provider_number" },
+                { "key": "csv", "type": "file", "src": "/home/cell24x7/Downloads/Project/ofc/Outbound_call/outbound_campaign_module/postman/assets/providers.csv" }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/api/ivr/lookup-tables", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "lookup-tables"] },
+            "description": "Uploads a hosted CSV lookup table (3 sample providers, keyed by provider_number) - the 'table' source option for the flow's lookup node, for clients without their own webhook backend."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Lookup table created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.row_count).to.eql(3);",
+                  "    pm.collectionVariables.set('lookup_table_id', json.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.2 Get Lookup Table",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/ivr/lookup-tables/{{lookup_table_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ivr", "lookup-tables", "{{lookup_table_id}}"]
+            },
+            "description": "Confirms the 3 rows landed correctly."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Rows present', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.rows.length).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. IVR - Flow",
+      "item": [
+        {
+          "name": "3.1 Create Flow (sample provider-lookup test flow)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Smoke Test Flow\",\n  \"nodes\": [\n    {\n      \"client_id\": \"welcome\",\n      \"type\": \"play\",\n      \"is_start\": true,\n      \"prompt_id\": \"{{prompt_welcome}}\",\n      \"next\": \"menu\"\n    },\n    {\n      \"client_id\": \"menu\",\n      \"type\": \"menu\",\n      \"prompt_id\": \"{{prompt_menu}}\",\n      \"config\": { \"digit_timeout_ms\": 8000 },\n      \"branches\": { \"1\": \"collect_provider\", \"9\": \"hangup_node\" }\n    },\n    {\n      \"client_id\": \"collect_provider\",\n      \"type\": \"collect_input\",\n      \"prompt_id\": \"{{prompt_collect}}\",\n      \"config\": { \"max_digits\": 10, \"min_digits\": 10, \"terminator\": \"#\", \"store_as\": \"provider_number\" },\n      \"next\": \"lookup_provider\"\n    },\n    {\n      \"client_id\": \"lookup_provider\",\n      \"type\": \"lookup\",\n      \"config\": { \"source_type\": \"table\", \"table_id\": \"{{lookup_table_id}}\", \"lookup_key\": \"provider_number\", \"response_var_prefix\": \"provider_\" },\n      \"branches\": { \"found\": \"speak_result\", \"not_found\": \"not_found_node\" }\n    },\n    {\n      \"client_id\": \"speak_result\",\n      \"type\": \"play\",\n      \"prompt_id\": \"Your provider is {{provider_name}}. Thank you for calling.\",\n      \"next\": \"hangup_node\"\n    },\n    {\n      \"client_id\": \"not_found_node\",\n      \"type\": \"play\",\n      \"prompt_id\": \"{{prompt_notfound}}\",\n      \"next\": \"hangup_node\"\n    },\n    {\n      \"client_id\": \"hangup_node\",\n      \"type\": \"hangup\"\n    }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/ivr/flows", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "flows"] },
+            "description": "Exercises every node type relevant to your ask in one small flow: play, menu with real DTMF branching (1 -> lookup, 9 -> hangup), collect_input (full number entry), lookup against the hosted table, a dynamic branch on found/not_found, and a TTS-spoken prompt ('Your provider is {{'{{'}}provider_name{{'}}'}}...') that only gets synthesized at call time via Piper. IMPORTANT: {{'{{'}}provider_name{{'}}'}} in speak_result's prompt_id is NOT a Postman variable - leave it exactly as-is, it's a flow-engine template substituted live from the lookup result. This is a sample/test flow only; build your real flows the same way with your own content."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Flow created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.id).to.be.a('string');",
+                  "    pm.collectionVariables.set('flow_id', json.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3.2 Get Flow",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/ivr/flows/{{flow_id}}", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "flows", "{{flow_id}}"] },
+            "description": "Reads the flow back - confirms all 7 nodes and their branches persisted correctly, with client_id references resolved to real DB UUIDs."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Flow has all 7 nodes', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.nodes.length).to.eql(7);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Campaign",
+      "item": [
+        {
+          "name": "4.1 Create Broadcast Campaign",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "name", "type": "text", "value": "Postman Test Campaign" },
+                { "key": "phoneNumbers", "type": "text", "value": "[\"{{test_phone_number}}\"]" },
+                { "key": "broadcastAudio", "type": "file", "src": "/home/cell24x7/Downloads/Project/ofc/Outbound_call/outbound_campaign_module/postman/assets/welcome_test.wav" }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/api/campaigns/broadcast", "host": ["{{baseUrl}}"], "path": ["api", "campaigns", "broadcast"] },
+            "description": "Zero-auth endpoint (matches the existing dialer's public webhook pattern). REPLACE {{test_phone_number}} (collection variable, currently a placeholder) with your own real number before running the collection if you want this to actually ring your phone once the gateway is back online and the flow is activated in step 5. broadcastAudio is required by this endpoint even though it becomes irrelevant once the campaign is linked to an IVR flow (the dialplan routes on ivr_flow_id, not audio_url) - the welcome_test.wav file is just satisfying that requirement."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Campaign created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.campaignId).to.be.a('string');",
+                  "    pm.collectionVariables.set('campaign_id', json.campaignId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.2 List Campaigns",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/campaigns", "host": ["{{baseUrl}}"], "path": ["api", "campaigns"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Campaign list returned', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json()).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. IVR - Activate & Link Campaign",
+      "item": [
+        {
+          "name": "5.1 Activate Flow + Link Campaign",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"campaignId\": \"{{campaign_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/ivr/flows/{{flow_id}}/activate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ivr", "flows", "{{flow_id}}", "activate"]
+            },
+            "description": "Marks the flow live and points voice_campaigns.ivr_flow_id at it. From this point on, dispatching a lead from this campaign routes the channel into Stasis(ivr_engine, flowId, leadId) instead of the plain broadcast dialplan path."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Flow activated and linked', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.is_active).to.eql(true);",
+                  "    pm.expect(json.campaignId).to.eql(pm.collectionVariables.get('campaign_id'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.2 Verify Campaign Report Shows ivr_flow_id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/campaigns/{{campaign_id}}", "host": ["{{baseUrl}}"], "path": ["api", "campaigns", "{{campaign_id}}"] },
+            "description": "Final proof the whole chain wired together correctly: campaign.ivr_flow_id should equal the flow_id from step 3.1. Once the Dinstar gateway is back online, the worker will dispatch this campaign's lead(s) through the IVR flow automatically - no further API calls needed."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Campaign is linked to the IVR flow', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.campaign.ivr_flow_id).to.eql(pm.collectionVariables.get('flow_id'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Agent & Calls (optional, Workstream 7)",
+      "item": [
+        {
+          "name": "6.1 Create Test Agent",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{agent_username}}\",\n  \"password\": \"{{agent_password}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/agents", "host": ["{{baseUrl}}"], "path": ["api", "auth", "agents"] },
+            "description": "Creates a fresh test agent (rather than reusing the existing seeded agent1) and lazily provisions its SIP endpoint. If this username already exists from a previous run, you'll get a 409 - that's fine, just skip to 6.2."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('agent_id', json.agent.id);",
+                  "}",
+                  "pm.test('Agent created or already exists', function () {",
+                  "    pm.expect([201, 409]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6.2 Agent Login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{agent_username}}\",\n  \"password\": \"{{agent_password}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Agent login succeeded', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('agent_token', json.token);",
+                  "    pm.collectionVariables.set('agent_id', json.user.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6.3 Get My SIP Credentials",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{agent_token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/auth/me/sip-credentials", "host": ["{{baseUrl}}"], "path": ["api", "auth", "me", "sip-credentials"] },
+            "description": "Returns { sipUsername, sipPassword, wssUrl } for the WebRTC softphone at /agent-softphone/."
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('SIP credentials returned', function () { pm.response.to.have.status(200); });"] } }]
+        },
+        {
+          "name": "6.4 Agent Go Ready",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{agent_token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/calls/ready", "host": ["{{baseUrl}}"], "path": ["api", "calls", "ready"] },
+            "description": "Moves the agent from 'login' to 'idle' - without this they're never eligible for the campaign_agents queue or inbound ACD."
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Agent is idle', function () { pm.response.to.have.status(200); });"] } }]
+        },
+        {
+          "name": "6.5 Agent Click-to-Dial",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{agent_token}}" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerNumber\": \"{{test_phone_number}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/calls/dial", "host": ["{{baseUrl}}"], "path": ["api", "calls", "dial"] },
+            "description": "Creates a call record and fires an AMI Originate. With the Dinstar gateway offline this will accept the request but the physical call won't connect - useful to confirm the API/DB path still works."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Call initiated', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('call_id', json.callId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6.6 Submit Disposition",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{agent_token}}" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"callId\": \"{{call_id}}\",\n  \"dispositionCode\": \"RESOLVED\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/calls/disposition", "host": ["{{baseUrl}}"], "path": ["api", "calls", "disposition"] },
+            "description": "NOTE: the `dispositions` table is currently empty for this tenant, so this will 404 with 'Disposition code invalid for this tenant' until you seed one. Run this SQL once (via Render's DB shell or psql) before using this request:\n\nINSERT INTO dispositions (tenant_id, code, label, is_resolved) VALUES ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11','RESOLVED','Resolved - Test', true);\n\nThere's no API endpoint for managing dispositions yet - out of scope of the current work, flagging it here so the 404 isn't confusing."
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Disposition submitted (see request description if this 404s)', function () { pm.response.to.have.status(200); });"] } }]
+        },
+        {
+          "name": "6.7 Agent Break",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{agent_token}}" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"break\",\n  \"breakType\": \"tea\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/calls/break", "host": ["{{baseUrl}}"], "path": ["api", "calls", "break"] }
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Break logged', function () { pm.response.to.have.status(200); });"] } }]
+        },
+        {
+          "name": "6.8 Get Agent Bucket",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{agent_token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/calls/bucket", "host": ["{{baseUrl}}"], "path": ["api", "calls", "bucket"] }
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Bucket returned', function () { pm.response.to.have.status(200); });"] } }]
+        }
+      ]
+    },
+    {
+      "name": "7. Gateway Telemetry (zero-auth)",
+      "item": [
+        {
+          "name": "7.1 List Gateways",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/gateways", "host": ["{{baseUrl}}"], "path": ["api", "gateways"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Gateway list returned', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var json = pm.response.json();",
+                  "    if (json.length > 0) { pm.collectionVariables.set('gateway_id', json[0].id); }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "7.2 Port Allocations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/gateways/ports", "host": ["{{baseUrl}}"], "path": ["api", "gateways", "ports"] }
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Ports returned', function () { pm.response.to.have.status(200); });"] } }]
+        },
+        {
+          "name": "7.3 Live Gateway Status (Dinstar)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/gateways/{{gateway_id}}/live", "host": ["{{baseUrl}}"], "path": ["api", "gateways", "{{gateway_id}}", "live"] },
+            "description": "Queries the physical Dinstar box directly. EXPECTED to return 502 'Dinstar gateway unreachable' right now, since it's been offline since 2026-08-03 - that's correct fail-fast behavior (Workstream 4), not a bug. Re-run this once the gateway's back to confirm it flips to real port data."
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Gateway status request completed (502 expected while offline)', function () { pm.expect([200, 502]).to.include(pm.response.code); });"] } }]
+        }
+      ]
+    },
+    {
+      "name": "8. Analytics",
+      "item": [
+        {
+          "name": "8.1 Live Metrics",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/analytics/live", "host": ["{{baseUrl}}"], "path": ["api", "analytics", "live"] },
+            "description": "NOTE: this endpoint's role check only allows client_admin/mentor/team_leader, not super_admin - so with admin_token this will correctly 403. Log in as a client_admin-role user to actually see data here; included for completeness."
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Request completed (403 expected for super_admin)', function () { pm.expect([200, 403]).to.include(pm.response.code); });"] } }]
+        },
+        {
+          "name": "8.2 Call Logs",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/analytics/logs", "host": ["{{baseUrl}}"], "path": ["api", "analytics", "logs"] }
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Logs returned', function () { pm.response.to.have.status(200); });"] } }]
+        }
+      ]
+    }
+  ]
+}
