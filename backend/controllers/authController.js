@@ -108,15 +108,37 @@ export async function logout(req, res) {
 // action only (super_admin) - a client_admin can create their own agents (createAgent below)
 // but should never be able to create ANOTHER client's tenant.
 export async function createClient(req, res) {
-  const { tenantName, subdomain, adminUsername, adminPassword } = req.body;
+  const { tenantName, subdomain, adminUsername, adminPassword, portNumbers, gatewayId } = req.body;
 
   if (!tenantName || !subdomain || !adminUsername || !adminPassword) {
     return res.status(400).json({ error: 'tenantName, subdomain, adminUsername, and adminPassword are required' });
+  }
+  // Workstream 9: port assignment is mandatory at onboarding, not an optional afterthought - a
+  // client with zero ports allocated is unrestricted (see campaignController.js's opt-in-only
+  // port enforcement), which is the wrong default for a NEW client being deliberately set up.
+  if (!Array.isArray(portNumbers) || portNumbers.length === 0) {
+    return res.status(400).json({ error: 'portNumbers is required - a non-empty array of SIM port numbers to assign to this client' });
   }
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    // Only auto-pick a gateway when there's exactly one - guessing wrong once a second gateway
+    // exists would silently assign ports on the wrong physical box.
+    let resolvedGatewayId = gatewayId;
+    if (!resolvedGatewayId) {
+      const gatewaysResult = await client.query('SELECT id FROM gateways');
+      if (gatewaysResult.rows.length !== 1) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          error: gatewaysResult.rows.length === 0
+            ? 'No gateway exists to assign ports from'
+            : 'Multiple gateways exist - gatewayId is required'
+        });
+      }
+      resolvedGatewayId = gatewaysResult.rows[0].id;
+    }
 
     const tenantResult = await client.query(
       `INSERT INTO tenants (name, subdomain) VALUES ($1, $2) RETURNING id, name, subdomain, created_at`,
@@ -132,8 +154,28 @@ export async function createClient(req, res) {
     );
     const admin = userResult.rows[0];
 
+    // Only grants ports that are currently unallocated (tenant_id IS NULL) - if fewer rows come
+    // back than requested, some port numbers don't exist on this gateway or already belong to
+    // another tenant. Roll back EVERYTHING (tenant + admin + partial grant), not just the ports -
+    // a half-onboarded client with fewer ports than asked for is worse than no client at all.
+    const portsResult = await client.query(
+      `UPDATE gateway_ports SET tenant_id = $1, mapped_trunk_name = 'DinstarTrunk'
+       WHERE gateway_id = $2 AND port_number = ANY($3) AND tenant_id IS NULL
+       RETURNING port_number`,
+      [tenant.id, resolvedGatewayId, portNumbers.map(Number)]
+    );
+    if (portsResult.rows.length < portNumbers.length) {
+      await client.query('ROLLBACK');
+      const granted = portsResult.rows.map((r) => r.port_number);
+      const unavailable = portNumbers.filter((p) => !granted.includes(Number(p)));
+      return res.status(400).json({
+        error: `Port(s) ${unavailable.join(', ')} don't exist on this gateway or are already allocated to another client`
+      });
+    }
+    const ports = portsResult.rows.map((r) => r.port_number).sort((a, b) => a - b);
+
     await client.query('COMMIT');
-    res.status(201).json({ message: 'Client onboarded successfully', tenant, admin });
+    res.status(201).json({ message: 'Client onboarded successfully', tenant, admin, ports });
   } catch (error) {
     await client.query('ROLLBACK');
     if (error.code === '23505') {

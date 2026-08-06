@@ -1,5 +1,5 @@
 import express from 'express';
-import { getGateways, createGateway, getPortAllocations, allocatePort, getLiveGatewayStatus } from '../controllers/gatewayController.js';
+import { getGateways, createGateway, getPortAllocations, allocatePort, setTenantPorts, getLiveGatewayStatus } from '../controllers/gatewayController.js';
 import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -14,6 +14,9 @@ router.post('/', authenticateToken, authorizeRoles(['super_admin']), createGatew
 router.get('/ports', authenticateToken, getPortAllocations);
 router.get('/allocations', authenticateToken, getPortAllocations);
 router.post('/ports/allocate', authenticateToken, authorizeRoles(['super_admin']), allocatePort);
+// Sets a tenant's port allocation to exactly the given list in one call - increasing or
+// decreasing their ports is the same request, just a longer or shorter portNumbers array.
+router.put('/tenants/:tenantId/ports', authenticateToken, authorizeRoles(['super_admin']), setTenantPorts);
 router.get('/:gatewayId/live', authenticateToken, getLiveGatewayStatus);
 
 export default router;

@@ -1,4 +1,4 @@
-import { executeTenantQuery } from '../config/database.js';
+import pool, { executeTenantQuery } from '../config/database.js';
 import DinstarService from '../services/dinstarService.js';
 
 const DEFAULT_TENANT_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
@@ -99,6 +99,82 @@ export async function allocatePort(req, res) {
   } catch (error) {
     console.error('allocatePort failed:', error);
     res.status(500).json({ error: 'Failed to allocate port' });
+  }
+}
+
+// Workstream 9: sets a tenant's port allocation to EXACTLY the given list in one call, so
+// "give this client another port" and "take one away" are the same operation - just a longer or
+// shorter portNumbers array - instead of the caller juggling individual gateway_ports.id UUIDs
+// one at a time via allocatePort() above.
+export async function setTenantPorts(req, res) {
+  const { tenantId } = req.params;
+  const { portNumbers, gatewayId } = req.body;
+
+  if (!Array.isArray(portNumbers)) {
+    return res.status(400).json({ error: 'portNumbers is required (an array - pass [] to clear all ports)' });
+  }
+  const requestedPorts = portNumbers.map(Number);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    let resolvedGatewayId = gatewayId;
+    if (!resolvedGatewayId) {
+      const gatewaysResult = await client.query('SELECT id FROM gateways');
+      if (gatewaysResult.rows.length !== 1) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          error: gatewaysResult.rows.length === 0
+            ? 'No gateway exists to assign ports from'
+            : 'Multiple gateways exist - gatewayId is required'
+        });
+      }
+      resolvedGatewayId = gatewaysResult.rows[0].id;
+    }
+
+    // Allocate first, before deallocating anything - if a requested port turns out to belong to
+    // someone else, this rolls back with the tenant's CURRENT allocation still fully intact,
+    // rather than leaving them with fewer ports than they started with.
+    const allocateResult = await client.query(
+      `UPDATE gateway_ports SET tenant_id = $1, mapped_trunk_name = 'DinstarTrunk'
+       WHERE gateway_id = $2 AND port_number = ANY($3) AND (tenant_id = $1 OR tenant_id IS NULL)
+       RETURNING port_number`,
+      [tenantId, resolvedGatewayId, requestedPorts]
+    );
+    if (allocateResult.rows.length < requestedPorts.length) {
+      await client.query('ROLLBACK');
+      const granted = allocateResult.rows.map((r) => r.port_number);
+      const unavailable = requestedPorts.filter((p) => !granted.includes(p));
+      return res.status(400).json({
+        error: `Port(s) ${unavailable.join(', ')} don't exist on this gateway or are already allocated to another client`
+      });
+    }
+
+    // Now release anything this tenant held that ISN'T in the new list.
+    await client.query(
+      `UPDATE gateway_ports SET tenant_id = NULL, mapped_trunk_name = NULL
+       WHERE gateway_id = $1 AND tenant_id = $2 AND port_number != ALL($3)`,
+      [resolvedGatewayId, tenantId, requestedPorts]
+    );
+
+    const finalResult = await client.query(
+      `SELECT port_number FROM gateway_ports WHERE gateway_id = $1 AND tenant_id = $2 ORDER BY port_number`,
+      [resolvedGatewayId, tenantId]
+    );
+
+    await client.query('COMMIT');
+    res.json({
+      message: 'Port allocation updated',
+      tenantId,
+      ports: finalResult.rows.map((r) => r.port_number)
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('setTenantPorts failed:', error.message);
+    res.status(500).json({ error: 'Failed to update port allocation' });
+  } finally {
+    client.release();
   }
 }
 

@@ -15,11 +15,13 @@
     { "key": "bank_admin_username", "value": "apexbank_admin" },
     { "key": "bank_admin_password", "value": "ApexBank123!" },
     { "key": "bank_admin_token", "value": "" },
+    { "key": "bank_tenant_id", "value": "" },
     { "key": "loan_tenant_name", "value": "Swift Loan Recovery" },
     { "key": "loan_subdomain", "value": "swiftloans" },
     { "key": "loan_admin_username", "value": "swiftloans_admin" },
     { "key": "loan_admin_password", "value": "SwiftLoans123!" },
     { "key": "loan_admin_token", "value": "" },
+    { "key": "loan_tenant_id", "value": "" },
     { "key": "test_phone_number", "value": "+919999999999" },
     { "key": "test_language_code", "value": "en-US" },
     { "key": "prompt_welcome_audio", "value": "" },
@@ -104,10 +106,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{admin_token}}" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"tenantName\": \"{{bank_tenant_name}}\",\n  \"subdomain\": \"{{bank_subdomain}}\",\n  \"adminUsername\": \"{{bank_admin_username}}\",\n  \"adminPassword\": \"{{bank_admin_password}}\"\n}"
+              "raw": "{\n  \"tenantName\": \"{{bank_tenant_name}}\",\n  \"subdomain\": \"{{bank_subdomain}}\",\n  \"adminUsername\": \"{{bank_admin_username}}\",\n  \"adminPassword\": \"{{bank_admin_password}}\",\n  \"portNumbers\": [0, 1]\n}"
             },
             "url": { "raw": "{{baseUrl}}/api/auth/clients", "host": ["{{baseUrl}}"], "path": ["api", "auth", "clients"] },
-            "description": "Creates a brand-new tenant + its first client_admin login in ONE atomic request. This is the entire onboarding step for a new business - no code changes, ever, per client. If you've already run this collection before, you'll get a 409 (tenant/username already exists) - that's fine, just continue to 1.3."
+            "description": "Creates a brand-new tenant + its first client_admin login + grants them SIM ports 0 and 1, all in ONE atomic request - portNumbers is mandatory, not an optional follow-up step. This is the entire onboarding step for a new business - no code changes, ever, per client. If you've already run this collection before, you'll get a 409 (tenant/username already exists) - that's fine, just continue to 1.3."
           },
           "event": [
             {
@@ -130,10 +132,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{admin_token}}" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"tenantName\": \"{{loan_tenant_name}}\",\n  \"subdomain\": \"{{loan_subdomain}}\",\n  \"adminUsername\": \"{{loan_admin_username}}\",\n  \"adminPassword\": \"{{loan_admin_password}}\"\n}"
+              "raw": "{\n  \"tenantName\": \"{{loan_tenant_name}}\",\n  \"subdomain\": \"{{loan_subdomain}}\",\n  \"adminUsername\": \"{{loan_admin_username}}\",\n  \"adminPassword\": \"{{loan_admin_password}}\",\n  \"portNumbers\": [3, 4]\n}"
             },
             "url": { "raw": "{{baseUrl}}/api/auth/clients", "host": ["{{baseUrl}}"], "path": ["api", "auth", "clients"] },
-            "description": "A completely different business scenario (loan recovery vs. banking) - same onboarding call, zero code differences. Their tenant_id will be different from Apex Bank's, which is what makes everything below isolated."
+            "description": "A completely different business scenario (loan recovery vs. banking) - same onboarding call, zero code differences. Their tenant_id will be different from Apex Bank's, and their ports (3, 4) are a completely separate pool from Apex Bank's (0, 1) - which is what makes everything below isolated."
           },
           "event": [
             {
@@ -171,6 +173,7 @@
                   "    pm.response.to.have.status(200);",
                   "    var json = pm.response.json();",
                   "    pm.collectionVariables.set('bank_admin_token', json.token);",
+                  "    pm.collectionVariables.set('bank_tenant_id', json.user.tenant_id);",
                   "});"
                 ]
               }
@@ -198,6 +201,63 @@
                   "    pm.response.to.have.status(200);",
                   "    var json = pm.response.json();",
                   "    pm.collectionVariables.set('loan_admin_token', json.token);",
+                  "    pm.collectionVariables.set('loan_tenant_id', json.user.tenant_id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.5 Increase Apex Bank's Ports (0,1 -> 0,1,2)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"portNumbers\": [0, 1, 2]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/gateways/tenants/{{bank_tenant_id}}/ports", "host": ["{{baseUrl}}"], "path": ["api", "gateways", "tenants", "{{bank_tenant_id}}", "ports"] },
+            "description": "Sets Apex Bank's allocation to EXACTLY this list - adding port 2 on top of the 0,1 they got at onboarding. \"Increase\" and \"decrease\" are the same endpoint, just a longer or shorter portNumbers array. If port 2 is already held by a different tenant from earlier testing, you'll correctly get a 400 - pick a genuinely free port number instead."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Ports increased', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.ports).to.include.members([0, 1, 2]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.6 Decrease Apex Bank's Ports (0,1,2 -> just 0)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"portNumbers\": [0]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/gateways/tenants/{{bank_tenant_id}}/ports", "host": ["{{baseUrl}}"], "path": ["api", "gateways", "tenants", "{{bank_tenant_id}}", "ports"] },
+            "description": "Same endpoint, shorter list - releases ports 1 and 2 back to the free pool (their tenant_id goes back to null) and leaves Apex Bank with just port 0. Check folder 3's campaign requests afterward to see allowedPorts now defaults to just \"0\"."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Ports decreased', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.ports).to.eql([0]);",
                   "});"
                 ]
               }
