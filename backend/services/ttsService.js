@@ -22,6 +22,26 @@ const PIPER_SSH_HOST = process.env.PIPER_SSH_HOST || process.env.ASTERISK_SSH_HO
 const PIPER_SSH_PORT = parseInt(process.env.PIPER_SSH_PORT) || parseInt(process.env.ASTERISK_SSH_PORT) || 22;
 const PIPER_SSH_USER = process.env.PIPER_SSH_USER;
 const PIPER_SSH_PRIVATE_KEY_PATH = process.env.PIPER_SSH_PRIVATE_KEY_PATH;
+// Preferred over PIPER_SSH_PRIVATE_KEY_PATH's Secret File approach: a multi-line PEM block
+// pasted into a dashboard's Secret File editor is easy to silently corrupt (a dropped newline,
+// trailing whitespace, a truncated paste) with no error anywhere until the SSH handshake itself
+// fails - confirmed live, repeatedly, on this exact deployment. Base64-encoding the key into one
+// line and storing it as a normal env var removes that whole failure class - single-line values
+// are far harder for a UI paste to mangle. Set with: base64 -w0 tts_runner_key
+const PIPER_SSH_PRIVATE_KEY_B64 = process.env.PIPER_SSH_PRIVATE_KEY_B64;
+
+function loadPiperPrivateKey() {
+  if (PIPER_SSH_PRIVATE_KEY_B64) {
+    return Buffer.from(PIPER_SSH_PRIVATE_KEY_B64, 'base64');
+  }
+  if (PIPER_SSH_PRIVATE_KEY_PATH) {
+    if (!fs.existsSync(PIPER_SSH_PRIVATE_KEY_PATH)) {
+      throw new Error(`PIPER_SSH_PRIVATE_KEY_PATH does not exist on disk: ${PIPER_SSH_PRIVATE_KEY_PATH}`);
+    }
+    return fs.readFileSync(PIPER_SSH_PRIVATE_KEY_PATH);
+  }
+  return null;
+}
 
 const PIPER_BIN = process.env.PIPER_BIN || 'piper';
 const PIPER_MODEL_DIR = process.env.PIPER_MODEL_DIR || '/opt/piper/models';
@@ -67,15 +87,14 @@ function resolveModelFile(languageCode) {
 // never touches a shell command line (only a stdin stream), so it can't inject anything into
 // the remote command regardless of its contents.
 function runPiperRemote(text, modelFile) {
-  if (!PIPER_SSH_HOST || !PIPER_SSH_USER || !PIPER_SSH_PRIVATE_KEY_PATH) {
+  const privateKey = loadPiperPrivateKey();
+  if (!PIPER_SSH_HOST || !PIPER_SSH_USER || !privateKey) {
     throw new Error(
-      'TTS is not configured. Set PIPER_SSH_HOST/USER/PRIVATE_KEY_PATH to a dedicated, ' +
-      'least-privilege SSH credential that can execute Piper on the Asterisk box - this must ' +
-      'be separate from ASTERISK_SSH_* (that account is SFTP-only and cannot exec anything).'
+      'TTS is not configured. Set PIPER_SSH_HOST/USER and either PIPER_SSH_PRIVATE_KEY_B64 ' +
+      '(preferred) or PIPER_SSH_PRIVATE_KEY_PATH to a dedicated, least-privilege SSH credential ' +
+      'that can execute Piper on the Asterisk box - this must be separate from ASTERISK_SSH_* ' +
+      '(that account is SFTP-only and cannot exec anything).'
     );
-  }
-  if (!fs.existsSync(PIPER_SSH_PRIVATE_KEY_PATH)) {
-    throw new Error(`PIPER_SSH_PRIVATE_KEY_PATH does not exist on disk: ${PIPER_SSH_PRIVATE_KEY_PATH}`);
   }
 
   return new Promise((resolve, reject) => {
@@ -124,7 +143,7 @@ function runPiperRemote(text, modelFile) {
       host: PIPER_SSH_HOST,
       port: PIPER_SSH_PORT,
       username: PIPER_SSH_USER,
-      privateKey: fs.readFileSync(PIPER_SSH_PRIVATE_KEY_PATH),
+      privateKey,
       readyTimeout: 15000
     });
   });
