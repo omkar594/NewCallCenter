@@ -6,35 +6,170 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "https://newcallcenter.onrender.com" },
-    { "key": "admin_username", "value": "bootstrap_admin" },
-    { "key": "admin_password", "value": "AdminPass123!" },
-    { "key": "admin_token", "value": "" },
-    { "key": "bank_tenant_name", "value": "Apex Bank" },
-    { "key": "bank_subdomain", "value": "apexbank" },
-    { "key": "bank_admin_username", "value": "apexbank_admin" },
-    { "key": "bank_admin_password", "value": "ApexBank123!" },
-    { "key": "bank_admin_token", "value": "" },
-    { "key": "bank_tenant_id", "value": "" },
-    { "key": "loan_tenant_name", "value": "Swift Loan Recovery" },
-    { "key": "loan_subdomain", "value": "swiftloans" },
-    { "key": "loan_admin_username", "value": "swiftloans_admin" },
-    { "key": "loan_admin_password", "value": "SwiftLoans123!" },
-    { "key": "loan_admin_token", "value": "" },
-    { "key": "loan_tenant_id", "value": "" },
-    { "key": "test_phone_number", "value": "+919999999999" },
-    { "key": "test_language_code", "value": "en-US" },
-    { "key": "prompt_welcome_audio", "value": "" },
-    { "key": "lookup_table_id", "value": "" },
-    { "key": "bank_flow_id", "value": "" },
-    { "key": "loan_flow_id", "value": "" },
-    { "key": "bank_campaign_id", "value": "" },
-    { "key": "agent_username", "value": "test_agent_pm" },
-    { "key": "agent_password", "value": "AgentTest123!" },
-    { "key": "agent_token", "value": "" },
-    { "key": "agent_id", "value": "" },
-    { "key": "call_id", "value": "" },
-    { "key": "gateway_id", "value": "" }
+    {
+      "key": "baseUrl",
+      "value": "https://newcallcenter.onrender.com"
+    },
+    {
+      "key": "admin_username",
+      "value": "bootstrap_admin"
+    },
+    {
+      "key": "admin_password",
+      "value": "AdminPass123!"
+    },
+    {
+      "key": "admin_token",
+      "value": ""
+    },
+    {
+      "key": "bank_tenant_name",
+      "value": "Apex Bank"
+    },
+    {
+      "key": "bank_subdomain",
+      "value": "apexbank"
+    },
+    {
+      "key": "bank_admin_username",
+      "value": "apexbank_admin"
+    },
+    {
+      "key": "bank_admin_password",
+      "value": "ApexBank123!"
+    },
+    {
+      "key": "bank_admin_token",
+      "value": ""
+    },
+    {
+      "key": "bank_tenant_id",
+      "value": ""
+    },
+    {
+      "key": "loan_tenant_name",
+      "value": "Swift Loan Recovery"
+    },
+    {
+      "key": "loan_subdomain",
+      "value": "swiftloans"
+    },
+    {
+      "key": "loan_admin_username",
+      "value": "swiftloans_admin"
+    },
+    {
+      "key": "loan_admin_password",
+      "value": "SwiftLoans123!"
+    },
+    {
+      "key": "loan_admin_token",
+      "value": ""
+    },
+    {
+      "key": "loan_tenant_id",
+      "value": ""
+    },
+    {
+      "key": "test_phone_number",
+      "value": "+919999999999"
+    },
+    {
+      "key": "test_language_code",
+      "value": "en-US"
+    },
+    {
+      "key": "prompt_welcome_audio",
+      "value": ""
+    },
+    {
+      "key": "lookup_table_id",
+      "value": ""
+    },
+    {
+      "key": "bank_flow_id",
+      "value": ""
+    },
+    {
+      "key": "loan_flow_id",
+      "value": ""
+    },
+    {
+      "key": "bank_campaign_id",
+      "value": ""
+    },
+    {
+      "key": "agent_username",
+      "value": "test_agent_pm"
+    },
+    {
+      "key": "agent_password",
+      "value": "AgentTest123!"
+    },
+    {
+      "key": "agent_token",
+      "value": ""
+    },
+    {
+      "key": "agent_id",
+      "value": ""
+    },
+    {
+      "key": "call_id",
+      "value": ""
+    },
+    {
+      "key": "gateway_id",
+      "value": ""
+    },
+    {
+      "key": "porttest_tenant_name",
+      "value": "Port Test Co"
+    },
+    {
+      "key": "porttest_subdomain",
+      "value": "porttestco"
+    },
+    {
+      "key": "porttest_admin_username",
+      "value": "porttestco_admin"
+    },
+    {
+      "key": "porttest_admin_password",
+      "value": "PortTest123!"
+    },
+    {
+      "key": "porttest_admin_token",
+      "value": ""
+    },
+    {
+      "key": "porttest_tenant_id",
+      "value": ""
+    },
+    {
+      "key": "conflict_admin_username",
+      "value": "conflictco_admin"
+    },
+    {
+      "key": "conflict_admin_password",
+      "value": "ConflictCo123!"
+    },
+    {
+      "key": "porttestb_tenant_name",
+      "value": "Port Test Co B"
+    },
+    {
+      "key": "porttestb_subdomain",
+      "value": "porttestcob"
+    },
+    {
+      "key": "porttestb_admin_username",
+      "value": "porttestcob_admin"
+    },
+    {
+      "key": "porttestb_admin_password",
+      "value": "PortTestB123!"
+    }
   ],
   "item": [
     {
@@ -45,7 +180,15 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] },
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
             "description": "No auth required. Confirms the backend is up and shows live postgres/redis/AMI connection status."
           },
           "event": [
@@ -69,12 +212,27 @@
           "name": "0.2 Platform Owner Login (super_admin)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"username\": \"{{admin_username}}\",\n  \"password\": \"{{admin_password}}\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
             "description": "This is the ONE account that can onboard new clients (POST /api/auth/clients is super_admin-gated). Every client's own admin, created in folder 1, only ever manages their own tenant from here on."
           },
           "event": [
@@ -103,12 +261,31 @@
           "name": "1.1 Onboard Client: Apex Bank",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"tenantName\": \"{{bank_tenant_name}}\",\n  \"subdomain\": \"{{bank_subdomain}}\",\n  \"adminUsername\": \"{{bank_admin_username}}\",\n  \"adminPassword\": \"{{bank_admin_password}}\",\n  \"portNumbers\": [0, 1]\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/auth/clients", "host": ["{{baseUrl}}"], "path": ["api", "auth", "clients"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/clients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "clients"
+              ]
+            },
             "description": "Creates a brand-new tenant + its first client_admin login + grants them SIM ports 0 and 1, all in ONE atomic request - portNumbers is mandatory, not an optional follow-up step. This is the entire onboarding step for a new business - no code changes, ever, per client. If you've already run this collection before, you'll get a 409 (tenant/username already exists) - that's fine, just continue to 1.3."
           },
           "event": [
@@ -129,12 +306,31 @@
           "name": "1.2 Onboard Client: Swift Loan Recovery",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"tenantName\": \"{{loan_tenant_name}}\",\n  \"subdomain\": \"{{loan_subdomain}}\",\n  \"adminUsername\": \"{{loan_admin_username}}\",\n  \"adminPassword\": \"{{loan_admin_password}}\",\n  \"portNumbers\": [3, 4]\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/auth/clients", "host": ["{{baseUrl}}"], "path": ["api", "auth", "clients"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/clients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "clients"
+              ]
+            },
             "description": "A completely different business scenario (loan recovery vs. banking) - same onboarding call, zero code differences. Their tenant_id will be different from Apex Bank's, and their ports (3, 4) are a completely separate pool from Apex Bank's (0, 1) - which is what makes everything below isolated."
           },
           "event": [
@@ -155,12 +351,27 @@
           "name": "1.3 Login as Apex Bank Admin",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"username\": \"{{bank_admin_username}}\",\n  \"password\": \"{{bank_admin_password}}\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
             "description": "From here on, {{bank_admin_token}} is used for every Apex Bank request below - it carries their tenant_id in the JWT, which is what every /api/ivr/* and /api/campaigns/* endpoint filters by."
           },
           "event": [
@@ -184,12 +395,27 @@
           "name": "1.4 Login as Swift Loans Admin",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"username\": \"{{loan_admin_username}}\",\n  \"password\": \"{{loan_admin_password}}\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
           },
           "event": [
             {
@@ -212,12 +438,33 @@
           "name": "1.5 Increase Apex Bank's Ports (0,1 -> 0,1,2)",
           "request": {
             "method": "PUT",
-            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"portNumbers\": [0, 1, 2]\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/gateways/tenants/{{bank_tenant_id}}/ports", "host": ["{{baseUrl}}"], "path": ["api", "gateways", "tenants", "{{bank_tenant_id}}", "ports"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/gateways/tenants/{{bank_tenant_id}}/ports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "gateways",
+                "tenants",
+                "{{bank_tenant_id}}",
+                "ports"
+              ]
+            },
             "description": "Sets Apex Bank's allocation to EXACTLY this list - adding port 2 on top of the 0,1 they got at onboarding. \"Increase\" and \"decrease\" are the same endpoint, just a longer or shorter portNumbers array. If port 2 is already held by a different tenant from earlier testing, you'll correctly get a 400 - pick a genuinely free port number instead."
           },
           "event": [
@@ -240,12 +487,33 @@
           "name": "1.6 Decrease Apex Bank's Ports (0,1,2 -> just 0)",
           "request": {
             "method": "PUT",
-            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"portNumbers\": [0]\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/gateways/tenants/{{bank_tenant_id}}/ports", "host": ["{{baseUrl}}"], "path": ["api", "gateways", "tenants", "{{bank_tenant_id}}", "ports"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/gateways/tenants/{{bank_tenant_id}}/ports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "gateways",
+                "tenants",
+                "{{bank_tenant_id}}",
+                "ports"
+              ]
+            },
             "description": "Same endpoint, shorter list - releases ports 1 and 2 back to the free pool (their tenant_id goes back to null) and leaves Apex Bank with just port 0. Check folder 3's campaign requests afterward to see allowedPorts now defaults to just \"0\"."
           },
           "event": [
@@ -273,14 +541,33 @@
           "name": "2.1 Upload a Real Recorded Prompt (optional path)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Authorization", "value": "Bearer {{bank_admin_token}}" }],
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bank_admin_token}}"
+              }
+            ],
             "body": {
               "mode": "formdata",
               "formdata": [
-                { "key": "audio", "type": "file", "src": "/home/cell24x7/Downloads/Project/ofc/Outbound_call/outbound_campaign_module/postman/assets/welcome_test.wav" }
+                {
+                  "key": "audio",
+                  "type": "file",
+                  "src": "/home/cell24x7/Downloads/Project/ofc/Outbound_call/outbound_campaign_module/postman/assets/welcome_test.wav"
+                }
               ]
             },
-            "url": { "raw": "{{baseUrl}}/api/ivr/prompts", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "prompts"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/ivr/prompts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ivr",
+                "prompts"
+              ]
+            },
             "description": "Path 1 of 2 for getting a prompt onto the box: upload a real recording, get back a prompt_id to reference in a node. Transcodes + delivers to the Asterisk box automatically. The flow below uses this for its welcome node, and typed text (path 2) for everything else, to show both working side by side."
           },
           "event": [
@@ -304,16 +591,43 @@
           "name": "2.2 Upload Lookup Data (CSV)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Authorization", "value": "Bearer {{bank_admin_token}}" }],
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bank_admin_token}}"
+              }
+            ],
             "body": {
               "mode": "formdata",
               "formdata": [
-                { "key": "name", "type": "text", "value": "Apex Bank Account Lookup" },
-                { "key": "keyColumn", "type": "text", "value": "provider_number" },
-                { "key": "csv", "type": "file", "src": "/home/cell24x7/Downloads/Project/ofc/Outbound_call/outbound_campaign_module/postman/assets/providers.csv" }
+                {
+                  "key": "name",
+                  "type": "text",
+                  "value": "Apex Bank Account Lookup"
+                },
+                {
+                  "key": "keyColumn",
+                  "type": "text",
+                  "value": "provider_number"
+                },
+                {
+                  "key": "csv",
+                  "type": "file",
+                  "src": "/home/cell24x7/Downloads/Project/ofc/Outbound_call/outbound_campaign_module/postman/assets/providers.csv"
+                }
               ]
             },
-            "url": { "raw": "{{baseUrl}}/api/ivr/lookup-tables", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "lookup-tables"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/ivr/lookup-tables",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ivr",
+                "lookup-tables"
+              ]
+            },
             "description": "Sample CSV (provider_number/provider_name columns) - swap this file for your own client data (account numbers, loan IDs, policy numbers, whatever your lookup node needs to key on) and adjust keyColumn to match your header. This is the 'table' source option for a lookup node; a client with their own backend can point at a webhook instead."
           },
           "event": [
@@ -336,12 +650,31 @@
           "name": "2.3 Create Flow (typed prompts + uploaded audio + lookup, all in one)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{bank_admin_token}}" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bank_admin_token}}"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Apex Bank - Account Balance Flow\",\n  \"nodes\": [\n    {\n      \"client_id\": \"welcome\",\n      \"type\": \"play\",\n      \"is_start\": true,\n      \"prompt_id\": \"{{prompt_welcome_audio}}\",\n      \"next\": \"menu\"\n    },\n    {\n      \"client_id\": \"menu\",\n      \"type\": \"menu\",\n      \"prompt_text\": \"Press 1 to check your account balance. Press 9 to end this call.\",\n      \"config\": { \"digit_timeout_ms\": 8000 },\n      \"branches\": { \"1\": \"collect_account\", \"9\": \"hangup_node\" }\n    },\n    {\n      \"client_id\": \"collect_account\",\n      \"type\": \"collect_input\",\n      \"prompt_text\": \"Please enter your ten digit account number, then press the pound key.\",\n      \"config\": { \"max_digits\": 10, \"min_digits\": 10, \"terminator\": \"#\", \"store_as\": \"provider_number\" },\n      \"next\": \"lookup_account\"\n    },\n    {\n      \"client_id\": \"lookup_account\",\n      \"type\": \"lookup\",\n      \"config\": { \"source_type\": \"table\", \"table_id\": \"{{lookup_table_id}}\", \"lookup_key\": \"provider_number\", \"response_var_prefix\": \"provider_\" },\n      \"branches\": { \"found\": \"speak_result\", \"not_found\": \"not_found_node\" }\n    },\n    {\n      \"client_id\": \"speak_result\",\n      \"type\": \"play\",\n      \"prompt_text\": \"Thank you. Your account is registered to {{provider_name}}. Goodbye.\",\n      \"next\": \"hangup_node\"\n    },\n    {\n      \"client_id\": \"not_found_node\",\n      \"type\": \"play\",\n      \"prompt_text\": \"Sorry, we could not find that account number in our records.\",\n      \"next\": \"hangup_node\"\n    },\n    {\n      \"client_id\": \"hangup_node\",\n      \"type\": \"hangup\"\n    }\n  ]\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/ivr/flows", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "flows"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/ivr/flows",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ivr",
+                "flows"
+              ]
+            },
             "description": "One flow, demonstrating everything: welcome uses an uploaded recording (prompt_id); menu/collect_account/not_found_node are just TYPED text (prompt_text) - no audio file needed, Piper speaks them; speak_result's prompt_text contains {{'{{'}}provider_name{{'}}'}}, a value that only exists once the lookup runs mid-call - that's a flow VARIABLE, not a Postman variable, leave it exactly as-is. Real DTMF branching (1 -> lookup, 9 -> hangup), a data lookup, and dynamic TTS readback, all client-authored as plain JSON. This is a sample scenario - design your actual flow the same way, with your own content."
           },
           "event": [
@@ -365,8 +698,24 @@
           "name": "2.4 Get Flow (verify it saved correctly)",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{bank_admin_token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/ivr/flows/{{bank_flow_id}}", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "flows", "{{bank_flow_id}}"] },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bank_admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ivr/flows/{{bank_flow_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ivr",
+                "flows",
+                "{{bank_flow_id}}"
+              ]
+            },
             "description": "Reads the flow back - confirms all 7 nodes persisted, with client_id references resolved to real database UUIDs, and prompt_text stored alongside prompt_id per node."
           },
           "event": [
@@ -394,16 +743,43 @@
           "name": "3.1 Create Campaign (atomically linked to the flow)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Authorization", "value": "Bearer {{bank_admin_token}}" }],
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bank_admin_token}}"
+              }
+            ],
             "body": {
               "mode": "formdata",
               "formdata": [
-                { "key": "name", "type": "text", "value": "Apex Bank Balance Reminders" },
-                { "key": "phoneNumbers", "type": "text", "value": "[{\"phoneNumber\": \"{{test_phone_number}}\", \"customerName\": \"Test Customer\", \"languageCode\": \"{{test_language_code}}\"}]" },
-                { "key": "ivrFlowId", "type": "text", "value": "{{bank_flow_id}}" }
+                {
+                  "key": "name",
+                  "type": "text",
+                  "value": "Apex Bank Balance Reminders"
+                },
+                {
+                  "key": "phoneNumbers",
+                  "type": "text",
+                  "value": "[{\"phoneNumber\": \"{{test_phone_number}}\", \"customerName\": \"Test Customer\", \"languageCode\": \"{{test_language_code}}\"}]"
+                },
+                {
+                  "key": "ivrFlowId",
+                  "type": "text",
+                  "value": "{{bank_flow_id}}"
+                }
               ]
             },
-            "url": { "raw": "{{baseUrl}}/api/campaigns/broadcast", "host": ["{{baseUrl}}"], "path": ["api", "campaigns", "broadcast"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/campaigns/broadcast",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "campaigns",
+                "broadcast"
+              ]
+            },
             "description": "REPLACE {{test_phone_number}} with your own real number if you want this to actually ring you. {{test_language_code}} defaults to en-US - change to hi-IN or mr-IN to test another installed voice, per-lead, with zero flow changes.\n\nivrFlowId links the campaign to the flow in the SAME insert as creation (no separate activate-after-create race). No audio file is required - the flow supplies its own prompts.\n\nResponse status will be \"preparing\" (not \"running\") since this flow has static prompt_text - the backend pre-synthesizes every prompt for every language your leads use BEFORE the worker is allowed to dial anyone. This is what closes the ~20-second dead-air bug that used to happen live on the first call to a never-before-spoken phrase. Move on to 3.2 and poll until it flips."
           },
           "event": [
@@ -428,8 +804,23 @@
           "name": "3.2 Poll Until Status = running",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{bank_admin_token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/campaigns/{{bank_campaign_id}}", "host": ["{{baseUrl}}"], "path": ["api", "campaigns", "{{bank_campaign_id}}"] },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bank_admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/campaigns/{{bank_campaign_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "campaigns",
+                "{{bank_campaign_id}}"
+              ]
+            },
             "description": "Click Send repeatedly (every few seconds) until campaign.status reads \"running\" instead of \"preparing\" - that's your signal every prompt for this campaign's language(s) is already sitting on the Asterisk box, so the very first call plays audio instantly instead of going silent for ~20s. While status is \"preparing\", the worker will NOT touch this campaign's leads at all (dial_status stays \"pending\", attempts stays 0) - check the leads array below to see that for yourself.\n\nAlso confirms campaign.ivr_flow_id equals bank_flow_id from step 2.3 - proof the whole chain wired together."
           },
           "event": [
@@ -453,8 +844,22 @@
           "name": "3.3 List Campaigns (Apex Bank sees only its own)",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{bank_admin_token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/campaigns", "host": ["{{baseUrl}}"], "path": ["api", "campaigns"] },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bank_admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/campaigns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "campaigns"
+              ]
+            },
             "description": "Scoped to the caller's own tenant - only shows campaigns Apex Bank itself created, regardless of how many other clients are running campaigns on the same platform."
           },
           "event": [
@@ -481,12 +886,31 @@
           "name": "4.1 Swift Loans Creates Its Own (Different) Flow",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{loan_admin_token}}" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{loan_admin_token}}"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Swift Loans - Recovery Flow\",\n  \"nodes\": [\n    {\n      \"client_id\": \"welcome\",\n      \"type\": \"play\",\n      \"is_start\": true,\n      \"prompt_text\": \"This is Swift Loan Recovery calling about your overdue payment. Press 1 to speak with an agent, or 9 to end this call.\",\n      \"next\": \"hangup_node\"\n    },\n    {\n      \"client_id\": \"hangup_node\",\n      \"type\": \"hangup\"\n    }\n  ]\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/ivr/flows", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "flows"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/ivr/flows",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ivr",
+                "flows"
+              ]
+            },
             "description": "A completely different business scenario, authored by a completely different client, with zero code changes on the backend. Needed here so the isolation checks below have something real to test against in both directions."
           },
           "event": [
@@ -509,8 +933,24 @@
           "name": "4.2 Swift Loans Tries to Read Apex Bank's Flow -> 404",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{loan_admin_token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/ivr/flows/{{bank_flow_id}}", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "flows", "{{bank_flow_id}}"] },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{loan_admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ivr/flows/{{bank_flow_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ivr",
+                "flows",
+                "{{bank_flow_id}}"
+              ]
+            },
             "description": "Every /api/ivr/* read filters WHERE tenant_id = caller's own tenant - a flow belonging to a different tenant isn't 403 Forbidden, it's 404 Not Found, exactly as if it doesn't exist. No information leak either way."
           },
           "event": [
@@ -531,8 +971,24 @@
           "name": "4.3 Apex Bank Tries to Read Swift Loans' Flow -> 404",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{bank_admin_token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/ivr/flows/{{loan_flow_id}}", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "flows", "{{loan_flow_id}}"] },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bank_admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ivr/flows/{{loan_flow_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ivr",
+                "flows",
+                "{{loan_flow_id}}"
+              ]
+            },
             "description": "Same check, other direction - confirms isolation isn't one-way."
           },
           "event": [
@@ -553,8 +1009,23 @@
           "name": "4.4 Swift Loans Tries to Read Apex Bank's Campaign -> 404",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{loan_admin_token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/campaigns/{{bank_campaign_id}}", "host": ["{{baseUrl}}"], "path": ["api", "campaigns", "{{bank_campaign_id}}"] },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{loan_admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/campaigns/{{bank_campaign_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "campaigns",
+                "{{bank_campaign_id}}"
+              ]
+            },
             "description": "Campaigns are scoped the exact same way as flows (Workstream 9) - previously campaign creation was zero-auth and every campaign landed under one shared default tenant regardless of who created it; this proves that's fixed too."
           },
           "event": [
@@ -575,8 +1046,24 @@
           "name": "4.5 Apex Bank Confirms It Can Still Read Its Own Flow -> 200",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{bank_admin_token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/ivr/flows/{{bank_flow_id}}", "host": ["{{baseUrl}}"], "path": ["api", "ivr", "flows", "{{bank_flow_id}}"] },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bank_admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ivr/flows/{{bank_flow_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ivr",
+                "flows",
+                "{{bank_flow_id}}"
+              ]
+            },
             "description": "The isolation is per-tenant, not a blanket lockout - Apex Bank's own admin still sees everything that belongs to Apex Bank, fully and correctly."
           },
           "event": [
@@ -598,18 +1085,659 @@
       ]
     },
     {
-      "name": "5. Agent & Calls (optional, Workstream 7)",
+      "name": "5. Port Restriction Testing",
       "item": [
         {
-          "name": "5.1 Create Test Agent",
+          "name": "5.1 Onboard Without portNumbers -> 400",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantName\": \"Should Not Be Created\",\n  \"subdomain\": \"shouldnotexist\",\n  \"adminUsername\": \"shouldnotexist_admin\",\n  \"adminPassword\": \"Whatever123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/clients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "clients"
+              ]
+            },
+            "description": "portNumbers is mandatory at onboarding (Workstream 9) - a client can no longer be created without SIM ports assigned, closing the gap where a forgotten port-assignment step left a client silently unrestricted. No tenant/subdomain/username row should exist afterward."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Blocked - portNumbers is required', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.include('portNumbers');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.2 Onboard Client: Port Test Co (port 7)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantName\": \"{{porttest_tenant_name}}\",\n  \"subdomain\": \"{{porttest_subdomain}}\",\n  \"adminUsername\": \"{{porttest_admin_username}}\",\n  \"adminPassword\": \"{{porttest_admin_password}}\",\n  \"portNumbers\": [7]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/clients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "clients"
+              ]
+            },
+            "description": "A dedicated tenant just for this folder's checks, on its own port (7) that this folder never asks any OTHER tenant to touch - deliberately self-contained so these tests don't depend on Apex Bank's or Swift Loans' exact port state from folder 1, which can drift across repeated runs. If you've already run this before, you'll get a 409 - continue to 5.3."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Client onboarded or already exists, with its port', function () {",
+                  "    pm.expect([201, 409]).to.include(pm.response.code);",
+                  "    if (pm.response.code === 201) {",
+                  "        pm.expect(pm.response.json().ports).to.eql([7]);",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.3 Login as Port Test Co Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{porttest_admin_username}}\",\n  \"password\": \"{{porttest_admin_password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Port Test Co admin login succeeded', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('porttest_admin_token', json.token);",
+                  "    pm.collectionVariables.set('porttest_tenant_id', json.user.tenant_id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.4 Onboard Client: Port Test Co B (port 1) - conflict target for later checks",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantName\": \"{{porttestb_tenant_name}}\",\n  \"subdomain\": \"{{porttestb_subdomain}}\",\n  \"adminUsername\": \"{{porttestb_admin_username}}\",\n  \"adminPassword\": \"{{porttestb_admin_password}}\",\n  \"portNumbers\": [1]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/clients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "clients"
+              ]
+            },
+            "description": "A SECOND dedicated tenant, on a different port (1) - exists purely so 5.5 and 5.12 below have a real, deterministic \"someone else's port\" to attempt to steal, without reaching into Apex Bank's or Swift Loans' port allocations from folder 1."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Second helper client onboarded or already exists, with its port', function () {",
+                  "    pm.expect([201, 409]).to.include(pm.response.code);",
+                  "    if (pm.response.code === 201) {",
+                  "        pm.expect(pm.response.json().ports).to.eql([1]);",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.5 Onboard Conflict: Request a Port Port Test Co Already Owns -> 400, Full Rollback",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantName\": \"Conflict Co\",\n  \"subdomain\": \"conflictco\",\n  \"adminUsername\": \"{{conflict_admin_username}}\",\n  \"adminPassword\": \"{{conflict_admin_password}}\",\n  \"portNumbers\": [7]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/clients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "clients"
+              ]
+            },
+            "description": "Port 7 belongs to Port Test Co (granted in 5.2, deterministically, within this same folder) - onboarding must ROLL BACK ENTIRELY on a port conflict, not just skip the port grant, otherwise you'd end up with a half-onboarded tenant+admin that has zero ports and no way to tell it apart from a deliberately-unrestricted one. Run 5.6 right after this to prove the admin login was never actually created.\n\nIf you've run this folder before and Conflict Co already exists from a prior pass, you'll get a 409 here instead of 400 - that's a leftover from an earlier run, not a bug; the 400+rollback behavior was already proven that time."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Blocked - port already allocated to another tenant (or already ran before)', function () {",
+                  "    pm.expect([400, 409]).to.include(pm.response.code);",
+                  "    if (pm.response.code === 400) {",
+                  "        pm.expect(pm.response.json().error).to.include('7');",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.6 Confirm Rollback: Conflict Co Admin Cannot Log In -> 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{conflict_admin_username}}\",\n  \"password\": \"{{conflict_admin_password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Proves 5.5's ROLLBACK actually undid the whole transaction (tenant + admin user), not just the port grant - if this login ever succeeds, onboarding is silently leaving orphaned half-configured clients behind on a port conflict.\n\nNote: if 5.5 returned 409 (Conflict Co already existed from an earlier run), this login will correctly succeed (200) instead - that's expected in that case, not a rollback failure."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No admin account exists - rollback was complete (unless 5.5 hit a pre-existing 409)', function () {",
+                  "    pm.expect([200, 401]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.7 Unauthenticated Port View -> 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/gateways/ports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "gateways",
+                "ports"
+              ]
+            },
+            "description": "This route used to be entirely zero-auth (anyone could see the full port-to-tenant mapping, including other clients' tenant names). Confirms that gap is closed - no token, no data."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Blocked - authentication required', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.8 Port Test Co Views Ports (tenant-scoped - sees only its own)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{porttest_admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/gateways/ports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "gateways",
+                "ports"
+              ]
+            },
+            "description": "A non-super_admin caller only ever sees ports allocated to their OWN tenant - Port Test Co should see exactly port 7, never Port Test Co B's port 1, Apex Bank's, or Swift Loans' ports, even though they all live in the same gateway_ports table."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Only own port(s) visible', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.every(p => p.tenant_id === pm.collectionVariables.get('porttest_tenant_id'))).to.be.true;",
+                  "    pm.expect(json.map(p => p.port_number)).to.include(7);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.9 Port Test Co Creates Campaign With a Port It Doesn't Own -> 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{porttest_admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "name",
+                  "type": "text",
+                  "value": "Port Test Co - Should Fail"
+                },
+                {
+                  "key": "phoneNumbers",
+                  "type": "text",
+                  "value": "[{\"phoneNumber\": \"{{test_phone_number}}\"}]"
+                },
+                {
+                  "key": "allowedPorts",
+                  "type": "text",
+                  "value": "[1]"
+                },
+                {
+                  "key": "audioFile",
+                  "type": "file",
+                  "src": "/home/cell24x7/Downloads/Project/ofc/Outbound_call/outbound_campaign_module/postman/assets/welcome_test.wav"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/campaigns/broadcast",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "campaigns",
+                "broadcast"
+              ]
+            },
+            "description": "Port 6 is Port Test Co B's, not Port Test Co's - the exact enforcement added in Workstream 9 (campaignController.js validates allowedPorts against the caller's own gateway_ports allocation, before any audio processing happens)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Blocked - port not allocated to this tenant', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.include('not allocated');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.10 Port Test Co Creates Campaign With Its Own Port -> 201",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{porttest_admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "name",
+                  "type": "text",
+                  "value": "Port Test Co - Own Port"
+                },
+                {
+                  "key": "phoneNumbers",
+                  "type": "text",
+                  "value": "[{\"phoneNumber\": \"{{test_phone_number}}\"}]"
+                },
+                {
+                  "key": "allowedPorts",
+                  "type": "text",
+                  "value": "[7]"
+                },
+                {
+                  "key": "audioFile",
+                  "type": "file",
+                  "src": "/home/cell24x7/Downloads/Project/ofc/Outbound_call/outbound_campaign_module/postman/assets/welcome_test.wav"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/campaigns/broadcast",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "campaigns",
+                "broadcast"
+              ]
+            },
+            "description": "Same request as 5.9, but requesting port 7 - the port Port Test Co actually owns. Should succeed."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Campaign created with its own allocated port', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(pm.response.json().allowedPorts).to.eql('7');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.11 Port Test Co Creates Campaign With No allowedPorts (defaults to its own)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{porttest_admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "name",
+                  "type": "text",
+                  "value": "Port Test Co - Default Ports"
+                },
+                {
+                  "key": "phoneNumbers",
+                  "type": "text",
+                  "value": "[{\"phoneNumber\": \"{{test_phone_number}}\"}]"
+                },
+                {
+                  "key": "audioFile",
+                  "type": "file",
+                  "src": "/home/cell24x7/Downloads/Project/ofc/Outbound_call/outbound_campaign_module/postman/assets/welcome_test.wav"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/campaigns/broadcast",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "campaigns",
+                "broadcast"
+              ]
+            },
+            "description": "No allowedPorts at all - once a tenant has ANY explicit allocation on file, this now defaults to exactly the ports they own (port 7), not the old global 'all' behavior."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Defaults to the tenant\\'s own allocated ports, not \\'all\\'', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(pm.response.json().allowedPorts).to.eql('7');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.12 Adjust-Endpoint Conflict: Try to Grab Port Test Co B's Port -> 400, Unchanged",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"portNumbers\": [7, 1]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/gateways/tenants/{{porttest_tenant_id}}/ports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "gateways",
+                "tenants",
+                "{{porttest_tenant_id}}",
+                "ports"
+              ]
+            },
+            "description": "Trying to give Port Test Co port 1, which Port Test Co B already owns (5.4). The allocate-before-deallocate ordering means this must roll back with Port Test Co's allocation completely untouched (still just [7]), not left with neither the old nor the new list."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Blocked - port 1 belongs to another tenant', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.include('1');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.13 Confirm Port Test Co's Allocation Is Untouched (still just [7])",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{porttest_admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/gateways/ports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "gateways",
+                "ports"
+              ]
+            },
+            "description": "Follows 5.12 - proves the failed conflict adjustment left Port Test Co exactly where it started, no partial change."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Still exactly port 7, nothing more, nothing less', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var ports = pm.response.json().map(function (p) { return p.port_number; });",
+                  "    pm.expect(ports).to.eql([7]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Agent & Calls (optional, Workstream 7)",
+      "item": [
+        {
+          "name": "6.1 Create Test Agent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"username\": \"{{agent_username}}\",\n  \"password\": \"{{agent_password}}\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/auth/agents", "host": ["{{baseUrl}}"], "path": ["api", "auth", "agents"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/agents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "agents"
+              ]
+            },
             "description": "Creates a fresh test agent (rather than reusing the existing seeded agent1) and lazily provisions its SIP endpoint. If this username already exists from a previous run, you'll get a 409 - that's fine, just skip to 5.2."
           },
           "event": [
@@ -631,15 +1759,30 @@
           ]
         },
         {
-          "name": "5.2 Agent Login",
+          "name": "6.2 Agent Login",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"username\": \"{{agent_username}}\",\n  \"password\": \"{{agent_password}}\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
           },
           "event": [
             {
@@ -659,35 +1802,105 @@
           ]
         },
         {
-          "name": "5.3 Get My SIP Credentials",
+          "name": "6.3 Get My SIP Credentials",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{agent_token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/auth/me/sip-credentials", "host": ["{{baseUrl}}"], "path": ["api", "auth", "me", "sip-credentials"] },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{agent_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me/sip-credentials",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "me",
+                "sip-credentials"
+              ]
+            },
             "description": "Returns { sipUsername, sipPassword, wssUrl } for the WebRTC softphone at /agent-softphone/."
           },
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('SIP credentials returned', function () { pm.response.to.have.status(200); });"] } }]
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('SIP credentials returned', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "5.4 Agent Go Ready",
+          "name": "6.4 Agent Go Ready",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Authorization", "value": "Bearer {{agent_token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/calls/ready", "host": ["{{baseUrl}}"], "path": ["api", "calls", "ready"] },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{agent_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/calls/ready",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls",
+                "ready"
+              ]
+            },
             "description": "Moves the agent from 'login' to 'idle' - without this they're never eligible for the campaign_agents queue or inbound ACD."
           },
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Agent is idle', function () { pm.response.to.have.status(200); });"] } }]
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Agent is idle', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "5.5 Agent Click-to-Dial",
+          "name": "6.5 Agent Click-to-Dial",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{agent_token}}" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{agent_token}}"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"customerNumber\": \"{{test_phone_number}}\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/calls/dial", "host": ["{{baseUrl}}"], "path": ["api", "calls", "dial"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls/dial",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls",
+                "dial"
+              ]
+            },
             "description": "Creates a call record and fires an AMI Originate. With the Dinstar gateway offline this will accept the request but the physical call won't connect - useful to confirm the API/DB path still works."
           },
           "event": [
@@ -707,49 +1920,150 @@
           ]
         },
         {
-          "name": "5.6 Submit Disposition",
+          "name": "6.6 Submit Disposition",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{agent_token}}" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{agent_token}}"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"callId\": \"{{call_id}}\",\n  \"dispositionCode\": \"RESOLVED\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/calls/disposition", "host": ["{{baseUrl}}"], "path": ["api", "calls", "disposition"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls/disposition",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls",
+                "disposition"
+              ]
+            },
             "description": "NOTE: the `dispositions` table is currently empty for this tenant, so this will 404 with 'Disposition code invalid for this tenant' until you seed one. Run this SQL once (via Render's DB shell or psql) before using this request:\n\nINSERT INTO dispositions (tenant_id, code, label, is_resolved) VALUES ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11','RESOLVED','Resolved - Test', true);\n\nThere's no API endpoint for managing dispositions yet - out of scope of the current work, flagging it here so the 404 isn't confusing."
           },
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Disposition submitted (see request description if this 404s)', function () { pm.response.to.have.status(200); });"] } }]
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Disposition submitted (see request description if this 404s)', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "5.7 Agent Break",
+          "name": "6.7 Agent Break",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{agent_token}}" }],
-            "body": { "mode": "raw", "raw": "{\n  \"status\": \"break\",\n  \"breakType\": \"tea\"\n}" },
-            "url": { "raw": "{{baseUrl}}/api/calls/break", "host": ["{{baseUrl}}"], "path": ["api", "calls", "break"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{agent_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"break\",\n  \"breakType\": \"tea\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/calls/break",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls",
+                "break"
+              ]
+            }
           },
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Break logged', function () { pm.response.to.have.status(200); });"] } }]
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Break logged', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "5.8 Get Agent Bucket",
+          "name": "6.8 Get Agent Bucket",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{agent_token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/calls/bucket", "host": ["{{baseUrl}}"], "path": ["api", "calls", "bucket"] }
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{agent_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/calls/bucket",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "calls",
+                "bucket"
+              ]
+            }
           },
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Bucket returned', function () { pm.response.to.have.status(200); });"] } }]
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Bucket returned', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
     {
-      "name": "6. Gateway Telemetry (zero-auth)",
+      "name": "7. Gateway Telemetry",
       "item": [
         {
-          "name": "6.1 List Gateways",
+          "name": "7.1 List Gateways",
           "request": {
             "method": "GET",
-            "header": [],
-            "url": { "raw": "{{baseUrl}}/api/gateways", "host": ["{{baseUrl}}"], "path": ["api", "gateways"] }
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/gateways",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "gateways"
+              ]
+            },
+            "description": "This folder used to be zero-auth entirely - now requires login like everything else in the platform (Workstream 9). Using admin_token here since gateway management is a platform-operator concern; folder 5 already proves the tenant-scoped view with a client token."
           },
           "event": [
             {
@@ -768,47 +2082,149 @@
           ]
         },
         {
-          "name": "6.2 Port Allocations",
+          "name": "7.2 Port Allocations (super_admin sees every tenant's ports)",
           "request": {
             "method": "GET",
-            "header": [],
-            "url": { "raw": "{{baseUrl}}/api/gateways/ports", "host": ["{{baseUrl}}"], "path": ["api", "gateways", "ports"] }
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/gateways/ports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "gateways",
+                "ports"
+              ]
+            },
+            "description": "As super_admin, this returns every port across every tenant (Apex Bank's, Swift Loans', Port Test Co's) - unlike folder 5's tenant-scoped checks with a client token. See folder 5 for the unauthenticated-401 and tenant-scoping proofs."
           },
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Ports returned', function () { pm.response.to.have.status(200); });"] } }]
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Ports returned', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "6.3 Live Gateway Status (Dinstar)",
+          "name": "7.3 Live Gateway Status (Dinstar)",
           "request": {
             "method": "GET",
-            "header": [],
-            "url": { "raw": "{{baseUrl}}/api/gateways/{{gateway_id}}/live", "host": ["{{baseUrl}}"], "path": ["api", "gateways", "{{gateway_id}}", "live"] },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/gateways/{{gateway_id}}/live",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "gateways",
+                "{{gateway_id}}",
+                "live"
+              ]
+            },
             "description": "Queries the physical Dinstar box directly. Returns 502 'Dinstar gateway unreachable' while the gateway is offline - that's correct fail-fast behavior (Workstream 4), not a bug."
           },
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Gateway status request completed', function () { pm.expect([200, 502]).to.include(pm.response.code); });"] } }]
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Gateway status request completed', function () { pm.expect([200, 502]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
     {
-      "name": "7. Analytics",
+      "name": "8. Analytics",
       "item": [
         {
-          "name": "7.1 Live Metrics",
+          "name": "8.1 Live Metrics",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/analytics/live", "host": ["{{baseUrl}}"], "path": ["api", "analytics", "live"] },
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/analytics/live",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "analytics",
+                "live"
+              ]
+            },
             "description": "NOTE: this endpoint's role check only allows client_admin/mentor/team_leader, not super_admin - so with admin_token this will correctly 403. Try with {{bank_admin_token}} instead to actually see data."
           },
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Request completed (403 expected for super_admin)', function () { pm.expect([200, 403]).to.include(pm.response.code); });"] } }]
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Request completed (403 expected for super_admin)', function () { pm.expect([200, 403]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "7.2 Call Logs",
+          "name": "8.2 Call Logs",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
-            "url": { "raw": "{{baseUrl}}/api/analytics/logs", "host": ["{{baseUrl}}"], "path": ["api", "analytics", "logs"] }
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/analytics/logs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "analytics",
+                "logs"
+              ]
+            }
           },
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Logs returned', function () { pm.response.to.have.status(200); });"] } }]
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Logs returned', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
         }
       ]
     }
