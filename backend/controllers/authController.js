@@ -254,6 +254,28 @@ export async function createAgent(req, res) {
   }
 }
 
+// Lists agents for the caller's own tenant, joined with their live status - createAgent (above)
+// existed with no way to see who you'd already created. team_leader/mentor share this view (same
+// roles createAgent already allows) since a TL managing agents needs to see them too, not just
+// the client_admin who onboarded the tenant.
+export async function getAgents(req, res) {
+  const tenantId = req.user?.tenant_id || DEFAULT_TENANT_ID;
+  try {
+    const result = await executeTenantQuery(tenantId, `
+      SELECT u.id, u.username, u.status, u.created_at,
+             ap.current_status, ap.last_status_change
+      FROM users u
+      LEFT JOIN agent_profiles ap ON ap.user_id = u.id
+      WHERE u.tenant_id = $1 AND u.role = 'agent'
+      ORDER BY u.username
+    `, [tenantId]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('getAgents failed:', error);
+    res.status(500).json({ error: 'Failed to list agents' });
+  }
+}
+
 // Workstream 7: lets the agent softphone (frontend_component/agent_softphone/) fetch its own
 // SIP registration credentials right after JWT login, without ever exposing them anywhere
 // except this authenticated call. Lazily provisions on first call so pre-existing seed.sql

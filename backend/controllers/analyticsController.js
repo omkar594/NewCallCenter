@@ -95,7 +95,12 @@ export async function getLiveMetrics(req, res) {
   }
 }
 
-// Get master logs for reports (Super Admin and Client Admin only)
+// Get master logs for reports (Super Admin and Client Admin only). injectTenantContext sets
+// req.tenantId = null for super_admin specifically to bypass RLS (see middleware/rls.js) - but
+// `WHERE c.tenant_id = $1` with $1 = null never matches anything in SQL (NULL isn't equal to
+// NULL via `=`), so super_admin always got zero rows here instead of the global view the null
+// was meant to produce. Skip the tenant filter entirely when tenantId is null, same pattern
+// gatewayController.js's getPortAllocations already uses for its isSuperAdmin branch.
 export async function getCallLogs(req, res) {
   const tenantId = req.tenantId;
 
@@ -106,10 +111,10 @@ export async function getCallLogs(req, res) {
       FROM calls c
       LEFT JOIN users u ON u.id = c.agent_id
       LEFT JOIN dispositions d ON d.id = c.disposition_id
-      WHERE c.tenant_id = $1
+      ${tenantId ? 'WHERE c.tenant_id = $1' : ''}
       ORDER BY c.start_time DESC
       LIMIT 100
-    `, [tenantId]);
+    `, tenantId ? [tenantId] : []);
 
     res.json(result.rows);
   } catch (error) {

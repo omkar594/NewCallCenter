@@ -176,6 +176,25 @@ export async function updateFlow(req, res) {
   }
 }
 
+// Lists flows for the caller's own tenant - only get-by-id existed before, which a real
+// frontend needs a "your flows" list/picker to build on. super_admin may pass ?tenantId= to
+// drill into a specific client's flows (silently ignored for everyone else, same pattern as
+// gatewayController.js's getPortAllocations isSuperAdmin branch).
+export async function listFlows(req, res) {
+  const isSuperAdmin = req.user?.role === 'super_admin';
+  const tenantId = (isSuperAdmin && req.query.tenantId) ? req.query.tenantId : resolveTenantId(req);
+  try {
+    const result = await pool.query(
+      `SELECT id, name, version, is_active, created_at, updated_at FROM ivr_flows WHERE tenant_id = $1 ORDER BY created_at DESC`,
+      [tenantId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('[IvrController] listFlows failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+}
+
 export async function getFlow(req, res) {
   const tenantId = resolveTenantId(req);
   const { id } = req.params;

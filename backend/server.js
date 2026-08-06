@@ -73,9 +73,6 @@ const audioUploadsDir = path.resolve(process.cwd(), 'uploads', 'campaign_audio')
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(uploadsDir));
-// Workstream 7: minimal WebRTC agent softphone (frontend_component/agent_softphone/) - served
-// from the same origin so its relative fetch('/api/...') calls need no CORS/base-URL config.
-app.use('/agent-softphone', express.static(path.resolve(process.cwd(), '..', 'frontend_component', 'agent_softphone')));
 
 // Mount API routes
 app.use('/api/auth', authRoutes);

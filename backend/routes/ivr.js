@@ -5,6 +5,7 @@ import {
   createFlow,
   updateFlow,
   getFlow,
+  listFlows,
   activateFlow,
   uploadLookupTable,
   getLookupTable,
@@ -60,6 +61,7 @@ router.use(authorizeRoles(['super_admin', 'client_admin', 'team_leader']));
 // write (see ivrController.js's persistFlowNodes). This is the same shape a future visual
 // builder would author and read back via GET.
 router.post('/flows', createFlow);
+router.get('/flows', listFlows);
 router.put('/flows/:id', updateFlow);
 router.get('/flows/:id', getFlow);
 router.post('/flows/:id/activate', activateFlow);

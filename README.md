@@ -3,7 +3,7 @@
 ## Executive Summary & Overview
 This standalone repository package delivers a **Pure Backend REST API Microservice** for Automated Voice Broadcasting & Outbound Campaign Management, driving an Asterisk PBX (AWS EC2) over AMI, which routes calls through a Dinstar GSM gateway.
 
-* **No Frontend Required**: Connects to Postman, cURL, or any custom dashboard (a reference React component ships in `frontend_component/`).
+* **Web Console Included**: `frontend/` is a React (Vite, plain JS) app covering the full Super Admin (onboard clients, assign SIM ports, view every tenant) and Client Admin (build IVR flows, upload lookup data, run campaigns, manage agents, analytics) experience, plus a ported WebRTC agent softphone - see `frontend/README` section below. The API itself remains fully usable standalone via Postman/cURL/any custom dashboard too.
 * **No Authentication / Login Required** on the campaign/gateway endpoints: zero-auth REST for direct API consumption. **This means anyone with the URL can dial on your account and your Dinstar SIMs** - do not hand this URL out publicly without adding access control first (not included in this build; see the project's remediation plan).
 * **Dual Input Modes**: Supports bulk CSV file uploads **AND** manual phone number lists via JSON/text payload.
 * **Live Call Tracking & Analytics**: Real call outcomes (`answered`, `busy`, `no-answer`, `failed`, `processing`, `pending`), tracked via real Asterisk AMI events rather than the moment a dial request is merely accepted.
@@ -176,9 +176,11 @@ outbound_campaign_module/
 │   ├── sorcery.conf                    # Chains static pjsip.conf + Postgres realtime lookups
 │   ├── extconfig.conf                  # Maps ps_endpoints/ps_auths/ps_aors -> the pgsql driver
 │   └── http.conf                       # Built-in HTTPS server - actually serves WSS/TLS, not pjsip.conf
-├── frontend_component/
-│   ├── CampaignManagerUI.jsx           # Reference React upload/status UI (no build tooling of its own)
-│   └── agent_softphone/                # Minimal WebRTC agent softphone (JsSIP over WSS)
+├── frontend/                            # React (Vite, plain JS) web console - Super Admin, Client Admin, Agent softphone
+│   ├── src/pages/superadmin/            # Onboard clients, adjust SIM ports, drill into any tenant, global call logs
+│   ├── src/pages/tenant/                # IVR flow builder, lookup tables, campaigns, agents, analytics
+│   ├── src/pages/agent/Softphone.jsx    # Ported WebRTC softphone (JsSIP over WSS) - self-contained login, in-memory token only
+│   └── .env.example                     # VITE_API_BASE_URL - which backend this build talks to
 └── database/                           # PostgreSQL Schema & Setup Scripts
     ├── schema.sql                      # Database Schema (Campaigns, Leads, Telemetry) - kept in sync with server.js's initSchema()
     ├── seed.sql                        # Sample Test Data
@@ -205,6 +207,15 @@ npm install
 npm start
 ```
 `npm start` runs `server.js`, which starts the campaign dialer (`bulkCampaignWorker.js`) and the Dinstar telemetry poller (`dinstarPoller.js`) in-process automatically. **Do not launch either of those files as a separate process** - both now guard against a duplicate instance in the same process, but two separate OS processes would each hold their own lock/poll loop against the same database.
+
+### Step 4: Frontend (Web Console)
+```bash
+cd frontend
+cp .env.example .env.local   # set VITE_API_BASE_URL to your backend (defaults to http://localhost:5000)
+npm install
+npm run dev
+```
+Opens on `http://localhost:5173`. Logging in as a `super_admin` lands on the Onboard/Ports/Call-Logs console; `client_admin`/`team_leader`/`mentor` land on the Flows/Campaigns/Agents/Analytics console; an `agent` account should instead go straight to `/softphone`, which has its own self-contained login (see `frontend/src/pages/agent/Softphone.jsx` - deliberately not wired into the rest of the app's persisted auth, matching the standalone tool it was ported from).
 
 ---
 

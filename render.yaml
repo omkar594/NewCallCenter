@@ -45,3 +45,21 @@ services:
         value: /etc/secrets/asterisk_deploy_key
       - key: ASTERISK_SOUNDS_DIR
         value: /campaign_audio
+
+  # Super Admin / Client Admin / Agent web console - a separate static deploy from the backend
+  # above (CORS is wide open on the backend already, so cross-origin is fine). Not deployed
+  # automatically by editing this file - apply this blueprint (or add the service manually) from
+  # the Render dashboard when ready.
+  - type: web
+    name: outbound-campaign-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://newcallcenter.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

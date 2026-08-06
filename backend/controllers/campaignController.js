@@ -160,8 +160,12 @@ export async function handleOptOutWebhook(req, res) {
   }
 }
 
-// 1. Get list of all campaigns with progress metrics
+// 1. Get list of all campaigns with progress metrics. super_admin may pass ?tenantId= to drill
+// into one client's campaigns (ignored for everyone else - same override pattern used by
+// ivrController.js's listFlows and gatewayController.js's getPortAllocations).
 export async function getCampaigns(req, res) {
+  const isSuperAdmin = req.user?.role === 'super_admin';
+  const tenantId = (isSuperAdmin && req.query.tenantId) ? req.query.tenantId : resolveTenantId(req);
   try {
     const result = await executeTenantQuery(null, `
       SELECT
@@ -184,7 +188,7 @@ export async function getCampaigns(req, res) {
       WHERE vc.tenant_id = $1
       GROUP BY vc.id
       ORDER BY vc.created_at DESC
-    `, [resolveTenantId(req)]);
+    `, [tenantId]);
     res.json(result.rows);
   } catch (error) {
     console.error('[CampaignController] getCampaigns failed:', error);

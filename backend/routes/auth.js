@@ -1,5 +1,5 @@
 import express from 'express';
-import { login, logout, createAgent, getMySipCredentials, createClient, getClients } from '../controllers/authController.js';
+import { login, logout, createAgent, getAgents, getMySipCredentials, createClient, getClients } from '../controllers/authController.js';
 import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -15,6 +15,7 @@ router.get('/clients', authenticateToken, authorizeRoles(['super_admin']), getCl
 
 // Workstream 7: agent provisioning + softphone credential fetch.
 router.post('/agents', authenticateToken, authorizeRoles(['super_admin', 'client_admin', 'team_leader']), createAgent);
+router.get('/agents', authenticateToken, authorizeRoles(['super_admin', 'client_admin', 'team_leader', 'mentor']), getAgents);
 router.get('/me/sip-credentials', authenticateToken, getMySipCredentials);
 
 export default router;
