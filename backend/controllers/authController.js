@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { executeTenantQuery } from '../config/database.js';
+import pool, { executeTenantQuery } from '../config/database.js';
 import { syncAgentQueueMembership } from '../services/queueMembershipService.js';
 import { getOrProvisionAgentSipCredentials } from '../services/agentProvisioningService.js';
 
@@ -96,6 +96,74 @@ export async function logout(req, res) {
   } catch (error) {
     console.error('Logout error:', error);
     res.status(500).json({ error: 'Internal server error during logout' });
+  }
+}
+
+// Workstream 9: onboards a brand-new client as its own isolated tenant, with its first
+// client_admin login, in one atomic request. This is what makes "many clients, each with their
+// own business scenario" (banking, loan recovery, whatever comes next) actually work in
+// practice - every ivr_flows/ivr_nodes/ivr_lookup_tables/voice_campaigns row is already scoped
+// by tenant_id (see ivrController.js's resolveTenantId()), so a fresh tenant here is a fully
+// isolated client with zero code changes needed on our side to onboard them. Platform-operator
+// action only (super_admin) - a client_admin can create their own agents (createAgent below)
+// but should never be able to create ANOTHER client's tenant.
+export async function createClient(req, res) {
+  const { tenantName, subdomain, adminUsername, adminPassword } = req.body;
+
+  if (!tenantName || !subdomain || !adminUsername || !adminPassword) {
+    return res.status(400).json({ error: 'tenantName, subdomain, adminUsername, and adminPassword are required' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const tenantResult = await client.query(
+      `INSERT INTO tenants (name, subdomain) VALUES ($1, $2) RETURNING id, name, subdomain, created_at`,
+      [tenantName, subdomain]
+    );
+    const tenant = tenantResult.rows[0];
+
+    const passwordHash = await bcrypt.hash(adminPassword, 10);
+    const userResult = await client.query(
+      `INSERT INTO users (tenant_id, username, password_hash, role)
+       VALUES ($1, $2, $3, 'client_admin') RETURNING id, username, role, tenant_id`,
+      [tenant.id, adminUsername, passwordHash]
+    );
+    const admin = userResult.rows[0];
+
+    await client.query('COMMIT');
+    res.status(201).json({ message: 'Client onboarded successfully', tenant, admin });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    if (error.code === '23505') {
+      // Unique violation on tenants.name, tenants.subdomain, or users.username - error.detail
+      // names the actual conflicting column/value, more useful to the caller than a generic 409.
+      return res.status(409).json({ error: `Onboarding failed - already exists: ${error.detail || error.message}` });
+    }
+    console.error('createClient failed:', error);
+    res.status(500).json({ error: 'Failed to onboard client' });
+  } finally {
+    client.release();
+  }
+}
+
+// Lists every onboarded client (tenant) with a quick headcount of their admin logins - mainly
+// useful for confirming tenant isolation actually took effect after createClient above.
+export async function getClients(req, res) {
+  try {
+    const result = await pool.query(`
+      SELECT t.id, t.name, t.subdomain, t.created_at,
+             COUNT(u.id) FILTER (WHERE u.role = 'client_admin') AS admin_count
+      FROM tenants t
+      LEFT JOIN users u ON u.tenant_id = t.id
+      GROUP BY t.id
+      ORDER BY t.created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('getClients failed:', error);
+    res.status(500).json({ error: 'Failed to list clients' });
   }
 }
 
