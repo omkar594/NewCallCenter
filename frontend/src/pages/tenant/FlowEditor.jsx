@@ -235,6 +235,18 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
     onChange({ branches: node.branches.map((b, idx) => (idx === i ? { ...b, ...patch } : b)) });
   const removeBranch = (i) => onChange({ branches: node.branches.filter((_, idx) => idx !== i) });
 
+  // The lookup node's dedicated fields below read/write the SAME configText every other node
+  // type only exposes via the raw JSON fallback - structured fields and the JSON view stay in
+  // sync because they share this one source of truth, so a power user can still hand-edit
+  // anything the structured UI doesn't cover.
+  let parsedConfig = {};
+  try {
+    parsedConfig = JSON.parse(node.configText || '{}');
+  } catch (e) {
+    // Invalid JSON - leave parsedConfig empty; validate() at save time is what surfaces this.
+  }
+  const patchConfig = (patch) => onChange({ configText: JSON.stringify({ ...parsedConfig, ...patch }, null, 2) });
+
   return (
     <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
       <div className="flex items-start justify-between gap-4">
@@ -301,6 +313,88 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
         </div>
       )}
 
+      {node.type === 'lookup' && (
+        <div className="space-y-3 border border-slate-200 rounded-md p-3 bg-slate-50">
+          <div className="flex items-center gap-4 text-xs text-slate-600">
+            <label className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                checked={(parsedConfig.source_type || 'table') === 'table'}
+                onChange={() => patchConfig({ source_type: 'table' })}
+              />
+              Uploaded table (CSV)
+            </label>
+            <label className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                checked={parsedConfig.source_type === 'webhook'}
+                onChange={() => patchConfig({ source_type: 'webhook' })}
+              />
+              Connect the client's own database (via their API)
+            </label>
+          </div>
+
+          {parsedConfig.source_type === 'webhook' ? (
+            <>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Webhook URL</label>
+                <input
+                  value={parsedConfig.webhook_url || ''}
+                  onChange={(e) => patchConfig({ webhook_url: e.target.value })}
+                  placeholder="https://your-backend.example.com/lookup"
+                  className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Your own endpoint - it queries your real database however you like, we never see your DB credentials. We POST{' '}
+                  <code className="bg-white px-1 rounded">{'{ input: { [lookup_key]: value } }'}</code>, you respond with{' '}
+                  <code className="bg-white px-1 rounded">{'{ status: "found"|"not_found", data: {...} }'}</code>.
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Authorization header (optional)</label>
+                <input
+                  value={parsedConfig.webhook_auth_header || ''}
+                  onChange={(e) => patchConfig({ webhook_auth_header: e.target.value })}
+                  placeholder="Bearer your-api-token"
+                  className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+                />
+              </div>
+            </>
+          ) : (
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Lookup Table ID</label>
+              <input
+                value={parsedConfig.table_id || ''}
+                onChange={(e) => patchConfig({ table_id: e.target.value })}
+                placeholder="paste the ID copied from Lookup Tables"
+                className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm font-mono"
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Lookup key</label>
+              <input
+                value={parsedConfig.lookup_key || ''}
+                onChange={(e) => patchConfig({ lookup_key: e.target.value })}
+                placeholder="account_number"
+                className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Response variable prefix</label>
+              <input
+                value={parsedConfig.response_var_prefix || ''}
+                onChange={(e) => patchConfig({ response_var_prefix: e.target.value })}
+                placeholder="account_"
+                className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {BRANCH_TYPES.has(node.type) ? (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -312,7 +406,7 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
               <input
                 value={b.matchValue}
                 onChange={(e) => updateBranch(i, { matchValue: e.target.value })}
-                placeholder="match value (e.g. 1, found, human)"
+                placeholder={node.type === 'lookup' ? 'found / not_found / error' : 'match value (e.g. 1, human)'}
                 className="border border-slate-300 rounded-md px-2 py-1 text-sm flex-1"
               />
               <span className="text-slate-400 text-xs">-&gt;</span>
@@ -361,7 +455,7 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
         />
         <p className="mt-1 text-slate-400">
           {node.type === 'collect_input' && 'e.g. {"max_digits": 10, "min_digits": 10, "terminator": "#", "store_as": "account_number"}'}
-          {node.type === 'lookup' && 'e.g. {"source_type": "table", "table_id": "...", "lookup_key": "account_number", "response_var_prefix": "account_"}'}
+          {node.type === 'lookup' && 'source_type/table_id/webhook_url/lookup_key/response_var_prefix are already set by the section above - this is only for anything extra.'}
         </p>
       </details>
     </div>
