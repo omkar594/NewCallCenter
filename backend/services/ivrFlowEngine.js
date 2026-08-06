@@ -319,12 +319,16 @@ async function executeNode(node, state, flowCtx) {
   return handler(node, state, flowCtx);
 }
 
-async function runFlow(channelId, flowId, leadId, callerNumber, languageCode) {
+async function runFlow(channelId, flowId, leadId, callerNumber) {
   const flowCtx = await loadFlow(flowId);
-  const state = { channelId, flowId, leadId, callerNumber, languageCode, vars: {}, leftStasis: false };
+  const state = { channelId, flowId, leadId, callerNumber, languageCode: undefined, vars: {}, leftStasis: false };
   activeCalls.set(channelId, state);
 
   await ariService.answerChannel(channelId);
+  // Read LANGUAGE_CODE as a real channel variable (same proven-reliable pattern amd_check
+  // already uses for AMDSTATUS) rather than as a Stasis() positional arg - Asterisk can drop a
+  // trailing empty positional argument, which silently lost the language on some calls.
+  state.languageCode = await ariService.getChannelVar(channelId, 'LANGUAGE_CODE').catch(() => undefined) || undefined;
 
   let currentNode = flowCtx.startNode;
   let steps = 0;
@@ -350,17 +354,14 @@ async function runFlow(channelId, flowId, leadId, callerNumber, languageCode) {
 
 ariService.on('StasisStart', (evt) => {
   const channelId = evt.channel?.id;
-  // Workstream 9: 3rd arg is the lead's language_code (bulkCampaignWorker.js -> extensions.conf's
-  // Stasis(ivr_engine,${FLOW_ID},${LEAD_ID},${LANGUAGE_CODE})), undefined on older/plain calls -
-  // resolvePromptMedia()/synthesizeAndDeliver() fall back to ttsService's own default in that case.
-  const [flowId, leadId, languageCode] = evt.args || [];
+  const [flowId, leadId] = evt.args || [];
   if (!channelId || !flowId) {
     console.error(`[IvrFlowEngine] StasisStart with no channel/flowId (args=${JSON.stringify(evt.args)}) - hanging up.`);
     if (channelId) ariService.hangupChannel(channelId).catch(() => {});
     return;
   }
   const callerNumber = evt.channel?.caller?.number || '';
-  runFlow(channelId, flowId, leadId, callerNumber, languageCode).catch((err) => {
+  runFlow(channelId, flowId, leadId, callerNumber).catch((err) => {
     console.error(`[IvrFlowEngine] Flow execution failed for channel ${channelId}: ${err.message}`);
     ariService.hangupChannel(channelId).catch(() => {});
     activeCalls.delete(channelId);
