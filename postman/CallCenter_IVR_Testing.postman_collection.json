@@ -339,7 +339,7 @@
       "name": "4. Campaign",
       "item": [
         {
-          "name": "4.1 Create Broadcast Campaign",
+          "name": "4.1 Create Broadcast Campaign (linked to the IVR flow)",
           "request": {
             "method": "POST",
             "header": [],
@@ -348,11 +348,11 @@
               "formdata": [
                 { "key": "name", "type": "text", "value": "Postman Test Campaign" },
                 { "key": "phoneNumbers", "type": "text", "value": "[\"{{test_phone_number}}\"]" },
-                { "key": "broadcastAudio", "type": "file", "src": "/home/cell24x7/Downloads/Project/ofc/Outbound_call/outbound_campaign_module/postman/assets/welcome_test.wav" }
+                { "key": "ivrFlowId", "type": "text", "value": "{{flow_id}}" }
               ]
             },
             "url": { "raw": "{{baseUrl}}/api/campaigns/broadcast", "host": ["{{baseUrl}}"], "path": ["api", "campaigns", "broadcast"] },
-            "description": "Zero-auth endpoint (matches the existing dialer's public webhook pattern). REPLACE {{test_phone_number}} (collection variable, currently a placeholder) with your own real number before running the collection if you want this to actually ring your phone once the gateway is back online and the flow is activated in step 5. broadcastAudio is required by this endpoint even though it becomes irrelevant once the campaign is linked to an IVR flow (the dialplan routes on ivr_flow_id, not audio_url) - the welcome_test.wav file is just satisfying that requirement."
+            "description": "Zero-auth endpoint (matches the existing dialer's public webhook pattern). REPLACE {{test_phone_number}} (collection variable, currently a placeholder) with your own real number before running the collection if you want this to actually ring your phone once the gateway is back online. ivrFlowId links the campaign to the flow in the SAME insert as campaign creation - passing it up front (rather than a separate activate call afterward) closes a real race: the worker polls every 2s and can claim a 'pending' lead before a later link call takes effect, dispatching it through the plain audio_url path instead of the IVR engine. No audio file is needed here since the flow supplies its own prompts."
           },
           "event": [
             {
@@ -399,7 +399,7 @@
       "name": "5. IVR - Activate & Link Campaign",
       "item": [
         {
-          "name": "5.1 Activate Flow + Link Campaign",
+          "name": "5.1 Mark Flow Active",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{admin_token}}" }],
@@ -412,7 +412,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "ivr", "flows", "{{flow_id}}", "activate"]
             },
-            "description": "Marks the flow live and points voice_campaigns.ivr_flow_id at it. From this point on, dispatching a lead from this campaign routes the channel into Stasis(ivr_engine, flowId, leadId) instead of the plain broadcast dialplan path."
+            "description": "The campaign is already linked to this flow (set atomically in step 4.1's ivrFlowId, closing the dispatch race a separate link-after-creation call would have). This step just marks the flow's own is_active flag true - re-sending campaignId here is harmless/idempotent, not what actually creates the link."
           },
           "event": [
             {

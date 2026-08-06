@@ -176,7 +176,7 @@ export async function getCampaignReport(req, res) {
 
 // 3. Initiate Bulk Outbound Voice Broadcast (Supports JSON payloads OR Multipart Form-Data)
 export async function createBroadcastCampaign(req, res) {
-  const { name, allowedPorts, phoneNumbers, audioBase64 } = req.body;
+  const { name, allowedPorts, phoneNumbers, audioBase64, ivrFlowId } = req.body;
 
   if (!name) {
     return res.status(400).json({ error: 'Campaign name is required' });
@@ -187,9 +187,13 @@ export async function createBroadcastCampaign(req, res) {
   // filesystem path straight into ffmpeg (arbitrary local file read) was removed - see plan Workstream 1.
   const audioFile = req.files?.broadcastAudio?.[0] || req.files?.audioFile?.[0] || req.files?.audio?.[0] || req.files?.file?.[0] || null;
 
-  if (!audioFile && !audioBase64) {
+  // Workstream 9: an IVR-flow campaign gets its prompts from the flow itself (uploads/prompt_text
+  // per node) - a placeholder audio file here would only ever be dead weight, and requiring one
+  // just to satisfy this endpoint was actively misleading during testing (nothing plays it, but
+  // its presence looks meaningful). Only the classic single-prompt path still requires real audio.
+  if (!ivrFlowId && !audioFile && !audioBase64) {
     return res.status(400).json({
-      error: 'Audio prompt is required. Pass audioFile / broadcastAudio file OR audioBase64 string'
+      error: 'Audio prompt is required. Pass audioFile / broadcastAudio file OR audioBase64 string (unless ivrFlowId is set)'
     });
   }
 
@@ -296,42 +300,53 @@ export async function createBroadcastCampaign(req, res) {
       console.warn('[CampaignController] Storage directory creation notice:', err.message);
     }
 
-    const outputFilename = `${Date.now()}_transcoded.wav`;
-    const outputPath = path.join(targetDir, outputFilename);
-
     // Handle Audio Source, then push the transcoded prompt to the Asterisk box itself -
-    // it must live where Playback() can find it, not just in Render's ephemeral /tmp.
-    if (audioFile) {
-      await transcodeCampaignAudio(audioFile.path, outputPath);
-    } else {
-      tempInputPath = path.join(targetDir, `temp_${Date.now()}.mp3`);
-      const base64Data = audioBase64.replace(/^data:audio\/\w+;base64,/, '');
-      fs.writeFileSync(tempInputPath, Buffer.from(base64Data, 'base64'));
-      await transcodeCampaignAudio(tempInputPath, outputPath);
+    // it must live where Playback() can find it, not just in Render's ephemeral /tmp. Skipped
+    // entirely for an IVR-flow campaign with no audio provided - the flow supplies its own
+    // prompts per node, so there's nothing to transcode/deliver and audio_url stays null.
+    let audioFilename = null;
+    if (audioFile || audioBase64) {
+      const outputFilename = `${Date.now()}_transcoded.wav`;
+      const outputPath = path.join(targetDir, outputFilename);
+      if (audioFile) {
+        await transcodeCampaignAudio(audioFile.path, outputPath);
+      } else {
+        tempInputPath = path.join(targetDir, `temp_${Date.now()}.mp3`);
+        const base64Data = audioBase64.replace(/^data:audio\/\w+;base64,/, '');
+        fs.writeFileSync(tempInputPath, Buffer.from(base64Data, 'base64'));
+        await transcodeCampaignAudio(tempInputPath, outputPath);
+      }
+      // audioFilename is the extension-less basename Asterisk's Playback() expects,
+      // once the file has actually landed in its sounds directory over SFTP.
+      audioFilename = await deliverCampaignAudio(outputPath);
+      try { fs.unlinkSync(outputPath); } catch (e) {}
     }
 
-    // audioFilename is the extension-less basename Asterisk's Playback() expects,
-    // once the file has actually landed in its sounds directory over SFTP.
-    const audioFilename = await deliverCampaignAudio(outputPath);
-    try { fs.unlinkSync(outputPath); } catch (e) {}
-
     const defaultTenantId = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+
+    // Workstream 9: setting ivr_flow_id in this SAME INSERT (rather than requiring a separate
+    // POST /api/ivr/flows/:id/activate call afterward) closes a real race - the worker polls
+    // every 2s and claims 'pending' leads as soon as they exist, so a campaign created first and
+    // linked to its flow a moment later could get its first lead(s) dispatched through the plain
+    // audio_url path in that gap, before the link ever took effect. Passing ivrFlowId up front
+    // means a lead can never be claimed while ivr_flow_id is still null.
+    const ivrFlowIdValue = ivrFlowId || null;
 
     // Insert Campaign Master Record with fallback if tenant_id column missing
     let campaignResult;
     try {
       campaignResult = await executeTenantQuery(null, `
-        INSERT INTO voice_campaigns (tenant_id, name, audio_url, status, allowed_ports, total_leads)
-        VALUES ($1, $2, $3, 'running', $4, $5)
+        INSERT INTO voice_campaigns (tenant_id, name, audio_url, status, allowed_ports, total_leads, ivr_flow_id)
+        VALUES ($1, $2, $3, 'running', $4, $5, $6)
         RETURNING *
-      `, [defaultTenantId, name, audioFilename, parsedPorts, leads.length]);
+      `, [defaultTenantId, name, audioFilename, parsedPorts, leads.length, ivrFlowIdValue]);
     } catch (err) {
       if (err.message.includes('tenant_id')) {
         campaignResult = await executeTenantQuery(null, `
-          INSERT INTO voice_campaigns (name, audio_url, status, allowed_ports, total_leads)
-          VALUES ($1, $2, 'running', $3, $4)
+          INSERT INTO voice_campaigns (name, audio_url, status, allowed_ports, total_leads, ivr_flow_id)
+          VALUES ($1, $2, 'running', $3, $4, $5)
           RETURNING *
-        `, [name, audioFilename, parsedPorts, leads.length]);
+        `, [name, audioFilename, parsedPorts, leads.length, ivrFlowIdValue]);
       } else {
         throw err;
       }
@@ -367,6 +382,7 @@ export async function createBroadcastCampaign(req, res) {
       totalLeads: leads.length,
       excludedDncCount,
       allowedPorts: parsedPorts,
+      ivrFlowId: campaign.ivr_flow_id,
       status: 'running'
     });
 
