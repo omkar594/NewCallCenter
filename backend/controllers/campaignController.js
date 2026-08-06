@@ -7,6 +7,7 @@ import { parse as parseCsv } from 'csv-parse/sync';
 import { transcodeCampaignAudio } from '../services/audioTranscoder.js';
 import { deliverCampaignAudio } from '../services/audioDeliveryService.js';
 import { normalizePhoneNumber } from '../utils/phoneNormalizer.js';
+import { prepareCampaignAudio } from '../services/campaignAudioPreloader.js';
 
 const PHONE_HEADER_ALIASES = ['phone', 'phone_number', 'phonenumber', 'number', 'mobile', 'msisdn'];
 const NAME_HEADER_ALIASES = ['name', 'customer_name', 'customername', 'full_name'];
@@ -351,21 +352,29 @@ export async function createBroadcastCampaign(req, res) {
     // means a lead can never be claimed while ivr_flow_id is still null.
     const ivrFlowIdValue = ivrFlowId || null;
 
+    // Workstream 9: an IVR-flow campaign starts 'preparing' instead of 'running' - the worker's
+    // claimNextPendingLead() only claims leads whose campaign status is 'running'/'pending', so
+    // this alone keeps every lead undialable until prepareCampaignAudio() (triggered below, once
+    // leads exist) has pre-synthesized every static prompt for every language this campaign's
+    // leads actually use and flips the status itself. A classic (non-IVR) campaign has no TTS to
+    // prepare and starts 'running' immediately, unchanged from before.
+    const initialStatus = ivrFlowIdValue ? 'preparing' : 'running';
+
     // Insert Campaign Master Record with fallback if tenant_id column missing
     let campaignResult;
     try {
       campaignResult = await executeTenantQuery(null, `
         INSERT INTO voice_campaigns (tenant_id, name, audio_url, status, allowed_ports, total_leads, ivr_flow_id)
-        VALUES ($1, $2, $3, 'running', $4, $5, $6)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING *
-      `, [campaignTenantId, name, audioFilename, parsedPorts, leads.length, ivrFlowIdValue]);
+      `, [campaignTenantId, name, audioFilename, initialStatus, parsedPorts, leads.length, ivrFlowIdValue]);
     } catch (err) {
       if (err.message.includes('tenant_id')) {
         campaignResult = await executeTenantQuery(null, `
           INSERT INTO voice_campaigns (name, audio_url, status, allowed_ports, total_leads, ivr_flow_id)
-          VALUES ($1, $2, 'running', $3, $4, $5)
+          VALUES ($1, $2, $3, $4, $5, $6)
           RETURNING *
-        `, [name, audioFilename, parsedPorts, leads.length, ivrFlowIdValue]);
+        `, [name, audioFilename, initialStatus, parsedPorts, leads.length, ivrFlowIdValue]);
       } else {
         throw err;
       }
@@ -394,6 +403,16 @@ export async function createBroadcastCampaign(req, res) {
       VALUES ${valuesSql}
     `, insertParams);
 
+    // Fire-and-forget: leads exist now (needed so the preloader can read their language_code
+    // values), so kick off preparation without blocking this response on it - the worker can't
+    // dial anyone yet anyway since the campaign is still 'preparing'. Poll GET /api/campaigns/:id
+    // and watch status flip to 'running'.
+    if (ivrFlowIdValue) {
+      prepareCampaignAudio(campaign.id, ivrFlowIdValue).catch((err) => {
+        console.error(`[CampaignController] prepareCampaignAudio failed for campaign ${campaign.id}:`, err.message);
+      });
+    }
+
     res.status(201).json({
       message: 'Outbound campaign initiated successfully',
       campaignId: campaign.id,
@@ -402,7 +421,7 @@ export async function createBroadcastCampaign(req, res) {
       excludedDncCount,
       allowedPorts: parsedPorts,
       ivrFlowId: campaign.ivr_flow_id,
-      status: 'running'
+      status: campaign.status
     });
 
   } catch (error) {
