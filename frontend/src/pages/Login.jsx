@@ -1,8 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Radio, AlertCircle } from 'lucide-react';
+import { Radio, AlertCircle, PhoneCall, Workflow, ShieldCheck, Lock, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { homeForRole } from '../components/ProtectedRoute.jsx';
+import PlexusBackground from '../components/PlexusBackground.jsx';
+
+const HIGHLIGHTS = [
+  { icon: PhoneCall, text: 'Run outbound voice broadcasts at scale' },
+  { icon: Workflow, text: 'Design IVR call flows visually' },
+  { icon: ShieldCheck, text: 'Isolated, secure multi-tenant control' }
+];
 
 export default function Login() {
   const { login } = useAuth();
@@ -27,47 +34,103 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4">
-      <div className="w-full max-w-sm bg-white rounded-xl shadow-xl p-8">
-        <div className="flex items-center gap-2 mb-6">
-          <Radio className="w-6 h-6 text-brand-600" />
-          <h1 className="text-lg font-semibold text-slate-900">CallCenter Console</h1>
+    <div className="min-h-screen flex bg-slate-950">
+      <div className="relative hidden lg:flex lg:w-1/2 items-center justify-center overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+        <PlexusBackground />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-slate-950/40" />
+        <div className="relative z-10 max-w-md px-10">
+          <div className="flex items-center gap-2 mb-8">
+            <span className="relative flex h-10 w-10 items-center justify-center rounded-lg bg-amber-400/10 ring-1 ring-amber-400/30">
+              <Radio className="w-5 h-5 text-amber-400" />
+              <span className="absolute inline-flex h-2 w-2 rounded-full bg-amber-400 -top-0.5 -right-0.5 animate-ping" />
+              <span className="absolute inline-flex h-2 w-2 rounded-full bg-amber-400 -top-0.5 -right-0.5" />
+            </span>
+            <span className="text-xl font-semibold text-white tracking-tight">CallCenter Console</span>
+          </div>
+          <h1 className="text-3xl font-semibold text-white leading-tight mb-4">
+            Your outbound voice platform,<br />under one console.
+          </h1>
+          <p className="text-slate-400 text-sm mb-8">
+            Manage campaigns, IVR flows, gateway ports and live calls across every tenant from a single, unified control room.
+          </p>
+          <ul className="space-y-3">
+            {HIGHLIGHTS.map(({ icon: Icon, text }) => (
+              <li key={text} className="flex items-center gap-3 text-sm text-slate-300">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/5 ring-1 ring-white/10">
+                  <Icon className="w-4 h-4 text-teal-400" />
+                </span>
+                {text}
+              </li>
+            ))}
+          </ul>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Username</label>
-            <input
-              autoFocus
-              autoComplete="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
+      </div>
+
+      <div className="relative flex flex-1 items-center justify-center px-4 py-12 bg-slate-950 lg:bg-slate-50">
+        <div className="lg:hidden absolute inset-0 overflow-hidden">
+          <PlexusBackground />
+          <div className="absolute inset-0 bg-slate-950/70" />
+        </div>
+
+        <div className="relative z-10 w-full max-w-sm">
+          <div className="flex items-center gap-2 mb-6 lg:hidden justify-center">
+            <Radio className="w-6 h-6 text-amber-400" />
+            <h1 className="text-lg font-semibold text-white">CallCenter Console</h1>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
-            <input
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
-          </div>
-          {error && (
-            <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
-              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-              {error}
+
+          <div className="bg-white/95 backdrop-blur lg:bg-white rounded-2xl shadow-2xl shadow-black/40 border border-white/10 lg:border-slate-200 p-8">
+            <div className="mb-6">
+              <h2 className="text-xl font-semibold text-slate-900">Welcome back</h2>
+              <p className="text-sm text-slate-500 mt-1">Sign in to your console</p>
             </div>
-          )}
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white rounded-md py-2 text-sm font-medium transition-colors"
-          >
-            {submitting ? 'Logging in...' : 'Log in'}
-          </button>
-        </form>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Username</label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    autoFocus
+                    autoComplete="username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-shadow"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-shadow"
+                  />
+                </div>
+              </div>
+              {error && (
+                <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 animate-[shake_0.3s_ease-in-out]">
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                  {error}
+                </div>
+              )}
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white rounded-lg py-2.5 text-sm font-medium transition-all shadow-lg shadow-brand-600/20 hover:shadow-brand-600/30 hover:-translate-y-px active:translate-y-0"
+              >
+                {submitting ? 'Signing in…' : 'Log in'}
+              </button>
+            </form>
+          </div>
+
+          <p className="text-center text-xs text-slate-400 lg:text-slate-500 mt-6">
+            Secured multi-tenant access · CallCenter Console
+          </p>
+        </div>
       </div>
     </div>
   );
