@@ -321,10 +321,17 @@ async function dispatchLead(lead) {
     return;
   }
 
-  // Call connected - the SIM channel stays genuinely busy through ringing + prompt playback,
-  // so keep this lead 'processing' (holding a concurrency slot) until the real Hangup. Race
-  // that against an AgentTransferStart marker (Workstream 7) so a press-1 transfer switches
-  // to the much longer MAX_AGENT_CALL_DURATION_MS cap instead of the ordinary one.
+  // Call connected - originateResponse.Response === 'Success' is Asterisk's own signal that the
+  // callee actually answered (AMI only reports Originate as Success once the far end picks up),
+  // so this is the real "call connected" instant - captured here rather than reusing
+  // dispatchedAt, which was set before ringing even started. Credit billing (see finalizeLead
+  // below) must be charged on this connected duration only, not ring time + talk time.
+  const answeredAt = Date.now();
+
+  // The SIM channel stays genuinely busy through ringing + prompt playback, so keep this lead
+  // 'processing' (holding a concurrency slot) until the real Hangup. Race that against an
+  // AgentTransferStart marker (Workstream 7) so a press-1 transfer switches to the much longer
+  // MAX_AGENT_CALL_DURATION_MS cap instead of the ordinary one.
   const uniqueid = originateResponse.Uniqueid;
   let hangupEvent = null;
 
@@ -348,7 +355,7 @@ async function dispatchLead(lead) {
     console.warn(`[Worker] Lead ${lead.lead_id}: answered but no Hangup event within the cap - freeing the slot anyway`);
   }
 
-  const durationSec = Math.round((Date.now() - dispatchedAt) / 1000);
+  const durationSec = Math.round((Date.now() - answeredAt) / 1000);
   await finalizeLead(lead.lead_id, lead.campaign_id, 'answered', durationSec, lead.tenant_id);
 }
 
