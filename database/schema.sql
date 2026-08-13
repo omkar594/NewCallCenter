@@ -224,6 +224,7 @@ CREATE TABLE voice_campaigns (
     allowed_ports VARCHAR(255) DEFAULT 'all',
     total_leads INTEGER DEFAULT 0,
     processed_leads INTEGER DEFAULT 0,
+    max_retry_attempts INTEGER NOT NULL DEFAULT 0, -- additional tries after the first for busy/no-answer/failed
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -239,6 +240,7 @@ CREATE TABLE campaign_leads (
     attempts INTEGER DEFAULT 0,
     amd_status VARCHAR(20), -- Workstream 7: HUMAN/MACHINE/NOTSURE from the dialplan's AMD()
     dtmf_selected VARCHAR(20), -- Workstream 7: which DTMF menu option the caller picked, if any
+    dtmf_label VARCHAR(100), -- human-readable snapshot of that branch's label at press-time
     language_code VARCHAR(10) DEFAULT 'en-US', -- Workstream 9: per-lead TTS language, see ivrFlowEngine.js
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -390,6 +392,7 @@ CREATE TABLE ivr_node_branches (
     node_id UUID NOT NULL REFERENCES ivr_nodes(id) ON DELETE CASCADE,
     match_value VARCHAR(100) NOT NULL,
     next_node_id UUID NOT NULL REFERENCES ivr_nodes(id) ON DELETE CASCADE,
+    label VARCHAR(100), -- optional human-readable annotation, e.g. '1' -> 'Balance Inquiry'
     UNIQUE (node_id, match_value)
 );
 CREATE INDEX idx_ivr_node_branches_node_id ON ivr_node_branches(node_id);

@@ -106,6 +106,9 @@ async function initSchema() {
       );
 
       ALTER TABLE voice_campaigns ADD COLUMN IF NOT EXISTS tenant_id UUID DEFAULT 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+      -- Additional tries after the first for a lead that ends busy/no-answer/failed (never for a
+      -- genuinely answered call) - see bulkCampaignWorker.js's finalizeLead.
+      ALTER TABLE voice_campaigns ADD COLUMN IF NOT EXISTS max_retry_attempts INTEGER NOT NULL DEFAULT 0;
 
       CREATE TABLE IF NOT EXISTS campaign_leads (
           id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -318,6 +321,11 @@ async function initSchema() {
 
       ALTER TABLE campaign_leads ADD COLUMN IF NOT EXISTS amd_status VARCHAR(20);
       ALTER TABLE campaign_leads ADD COLUMN IF NOT EXISTS dtmf_selected VARCHAR(20);
+      -- Snapshot of the matched branch's label at the moment the digit was pressed - NOT a live
+      -- join back to ivr_node_branches, so editing a flow's labels later never rewrites what a
+      -- past call's report shows. See ivrFlowEngine.js's handleMenu and
+      -- campaignTelemetryListener.js's AgentTransferStart handling for the two write sites.
+      ALTER TABLE campaign_leads ADD COLUMN IF NOT EXISTS dtmf_label VARCHAR(100);
 
       -- Workstream 7: Asterisk Realtime Architecture tables for dynamic per-agent SIP endpoints.
       -- res_config_pgsql on the EC2 box reads these directly (see telephony_config/sorcery.conf +
@@ -435,6 +443,11 @@ async function initSchema() {
           UNIQUE (node_id, match_value)
       );
       CREATE INDEX IF NOT EXISTS idx_ivr_node_branches_node_id ON ivr_node_branches(node_id);
+
+      -- Optional human-readable annotation for a branch (e.g. match_value '1' -> label
+      -- 'Balance Inquiry') - shown in the campaign report next to which digit a caller pressed,
+      -- see campaign_leads.dtmf_label below.
+      ALTER TABLE ivr_node_branches ADD COLUMN IF NOT EXISTS label VARCHAR(100);
 
       -- Client-hosted lookup tables (CSV-uploaded) for 'lookup' nodes whose source_type is
       -- 'table' rather than a client-owned webhook.

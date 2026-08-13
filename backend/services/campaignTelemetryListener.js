@@ -20,8 +20,11 @@ asteriskService.on('UserEvent', async (evt) => {
         [evt.Status || null, evt.LeadId]
       );
     } else if (evt.UserEvent === 'AgentTransferStart' && evt.LeadId) {
+      // Digit 1 is unconditionally "transfer to agent" in the classic (non-flow) dialplan's
+      // fixed menu (extensions.conf's exten => 1,1) - this label is accurate as long as that
+      // stays true, with no flow/branch config to read one from the way flow campaigns have.
       await pool.query(
-        `UPDATE campaign_leads SET dtmf_selected = '1', updated_at = NOW() WHERE id = $1`,
+        `UPDATE campaign_leads SET dtmf_selected = '1', dtmf_label = 'Transferred to Agent', updated_at = NOW() WHERE id = $1`,
         [evt.LeadId]
       );
     }

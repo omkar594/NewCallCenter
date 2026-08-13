@@ -22,6 +22,7 @@ export default function CampaignWizard() {
   const [csvFile, setCsvFile] = useState(null);
   const [ownedPorts, setOwnedPorts] = useState([]);
   const [selectedPorts, setSelectedPorts] = useState([]);
+  const [retryCount, setRetryCount] = useState(0);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -83,6 +84,7 @@ export default function CampaignWizard() {
       if (ownedPorts.length > 0) {
         form.append('allowedPorts', JSON.stringify(selectedPorts));
       }
+      form.append('retryCount', retryCount);
 
       const data = await apiPost('/api/campaigns/broadcast', form);
       setSuccess(data);
@@ -237,6 +239,25 @@ export default function CampaignWizard() {
               ))}
             </div>
           )}
+        </Section>
+
+        <Section title="5. Retry unanswered calls?">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Retry attempts</label>
+            <select
+              value={retryCount}
+              onChange={(e) => setRetryCount(Number(e.target.value))}
+              className="w-full sm:w-56 border border-slate-300 rounded-md px-3 py-2 text-sm"
+            >
+              <option value={0}>No retry</option>
+              <option value={1}>1</option>
+              <option value={2}>2</option>
+              <option value={3}>3</option>
+            </select>
+            <p className="text-xs text-slate-500 mt-1.5">
+              How many extra tries a number gets if it's busy, doesn't answer, or fails to connect - never applies once a call actually connects.
+            </p>
+          </div>
         </Section>
 
         {error && (

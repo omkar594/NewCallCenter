@@ -39,7 +39,7 @@ function nodesFromServer(serverNodes) {
     prompt_text: n.prompt_text || '',
     prompt_id: n.prompt_id || '',
     next: n.next || '',
-    branches: n.branches ? Object.entries(n.branches).map(([matchValue, target]) => ({ matchValue, target })) : [],
+    branches: n.branches ? Object.entries(n.branches).map(([matchValue, b]) => ({ matchValue, target: b.target, label: b.label || '' })) : [],
     configText: JSON.stringify(n.config || {}, null, 2)
   }));
 }
@@ -127,7 +127,7 @@ export default function FlowEditor() {
           prompt_text: n.promptMode === 'text' ? n.prompt_text || undefined : undefined,
           prompt_id: n.promptMode === 'audio' ? n.prompt_id || undefined : undefined,
           next: n.next || undefined,
-          branches: n.branches.length ? Object.fromEntries(n.branches.map((b) => [b.matchValue, b.target])) : undefined,
+          branches: n.branches.length ? Object.fromEntries(n.branches.map((b) => [b.matchValue, { target: b.target, label: b.label || undefined }])) : undefined,
           config: JSON.parse(n.configText || '{}')
         }))
       };
@@ -230,7 +230,7 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
     }
   };
 
-  const addBranch = () => onChange({ branches: [...node.branches, { matchValue: '', target: '' }] });
+  const addBranch = () => onChange({ branches: [...node.branches, { matchValue: '', target: '', label: '' }] });
   const updateBranch = (i, patch) =>
     onChange({ branches: node.branches.map((b, idx) => (idx === i ? { ...b, ...patch } : b)) });
   const removeBranch = (i) => onChange({ branches: node.branches.filter((_, idx) => idx !== i) });

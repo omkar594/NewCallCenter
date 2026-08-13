@@ -49,6 +49,40 @@ const PIPER_DEFAULT_MODEL = process.env.PIPER_DEFAULT_MODEL || 'en_IN-model.onnx
 const PIPER_TIMEOUT_MS = 20000;
 const DEFAULT_LANGUAGE_CODE = process.env.TTS_DEFAULT_LANGUAGE_CODE || 'en-IN';
 
+// Naturalness tuning: previously no flags were passed at all, so Piper fell back to its own
+// library defaults (noise_scale 0.667, noise_w 0.8, length_scale 1.0) - the flattest, most
+// metronomic setting it has. noise_w is phoneme-duration variance (how much natural timing
+// wobble speech has - too low reads as robotic/metronomic); noise_scale is overall vocal
+// variation (too high introduces graininess/artifacts, so nudged up only slightly). length_scale
+// is speaking rate - left at Piper's own default since pacing preference is call-script-specific,
+// but still exposed here so it can be tuned without another code change.
+const PIPER_NOISE_SCALE = process.env.PIPER_NOISE_SCALE || '0.72';
+const PIPER_NOISE_W = process.env.PIPER_NOISE_W || '0.92';
+const PIPER_LENGTH_SCALE = process.env.PIPER_LENGTH_SCALE || '1.0';
+
+// Per-language tuning override, on top of the global defaults above. Indic Piper models
+// (hi_IN-priyamvada) are trained on noticeably less data than the English ones and read as more
+// monotone/chanting at the same noise_w - nudged higher here specifically for Hindi. Override or
+// add more languages via PIPER_LANGUAGE_TUNING='{"hi-IN":{"noiseW":"1.05"}}' without a redeploy.
+const DEFAULT_LANGUAGE_TUNING = {
+  'hi-IN': { noiseScale: '0.78', noiseW: '1.05' }
+};
+let languageTuningOverrides = {};
+try {
+  languageTuningOverrides = JSON.parse(process.env.PIPER_LANGUAGE_TUNING || '{}');
+} catch (err) {
+  console.warn('[TtsService] PIPER_LANGUAGE_TUNING is not valid JSON - falling back to defaults only:', err.message);
+}
+
+function resolveTuning(languageCode) {
+  const override = { ...(DEFAULT_LANGUAGE_TUNING[languageCode] || {}), ...(languageTuningOverrides[languageCode] || {}) };
+  return {
+    noiseScale: override.noiseScale || PIPER_NOISE_SCALE,
+    noiseW: override.noiseW || PIPER_NOISE_W,
+    lengthScale: override.lengthScale || PIPER_LENGTH_SCALE
+  };
+}
+
 // Optional per-language model override, e.g. PIPER_VOICE_MODELS='{"hi-IN":"hi_IN-model.onnx","mr-IN":"mr_IN-model.onnx"}'.
 // Falls back to PIPER_DEFAULT_MODEL for any language not listed here.
 let voiceModelMap = {};
@@ -86,7 +120,7 @@ function resolveModelFile(languageCode) {
 // synthesized WAV off stdout - no remote temp files to clean up, and the caller-influenced text
 // never touches a shell command line (only a stdin stream), so it can't inject anything into
 // the remote command regardless of its contents.
-function runPiperRemote(text, modelFile) {
+function runPiperRemote(text, modelFile, languageCode) {
   const privateKey = loadPiperPrivateKey();
   if (!PIPER_SSH_HOST || !PIPER_SSH_USER || !privateKey) {
     throw new Error(
@@ -118,8 +152,12 @@ function runPiperRemote(text, modelFile) {
 
     conn.on('ready', () => {
       const modelPath = `${PIPER_MODEL_DIR}/${modelFile}`;
+      const tuning = resolveTuning(languageCode);
       // --output_file - streams the synthesized WAV to stdout instead of a remote file.
-      const command = `${PIPER_BIN} --model ${modelPath} --output_file -`;
+      // noise_scale/noise_w/length_scale: see PIPER_NOISE_SCALE etc. above - without these,
+      // Piper synthesizes with zero prosody variation, which is what read as "robotic."
+      const command = `${PIPER_BIN} --model ${modelPath} --output_file - ` +
+        `--noise_scale ${tuning.noiseScale} --noise_w ${tuning.noiseW} --length_scale ${tuning.lengthScale}`;
       conn.exec(command, (err, stream) => {
         if (err) return finish(reject, err);
 
@@ -170,7 +208,7 @@ export async function synthesizeAndDeliver(text, { languageCode = DEFAULT_LANGUA
   const rawPath = path.join(targetDir, `tts_${hash}_raw.wav`);
   const outputPath = path.join(targetDir, `tts_${hash}.wav`);
 
-  const wavBuffer = await runPiperRemote(text, modelFile);
+  const wavBuffer = await runPiperRemote(text, modelFile, languageCode);
   fs.writeFileSync(rawPath, wavBuffer);
 
   let basename;

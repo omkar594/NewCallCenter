@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, AlertCircle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, AlertCircle, RefreshCw, Hash } from 'lucide-react';
 import { apiGet } from '../../api/client.js';
 import DataTable from '../../components/DataTable.jsx';
 import StatusBadge from '../../components/StatusBadge.jsx';
@@ -95,6 +95,16 @@ export default function CampaignDetail() {
             { key: 'dial_status', label: 'Status', render: (l) => <StatusBadge status={l.dial_status} /> },
             { key: 'attempts', label: 'Attempts' },
             { key: 'call_duration', label: 'Duration (s)' },
+            {
+              key: 'dtmf_selected',
+              label: 'DTMF Pressed',
+              render: (l) => l.dtmf_selected ? (
+                <span className="inline-flex items-center gap-1 bg-brand-50 text-brand-700 text-xs font-medium px-2 py-1 rounded-full">
+                  <Hash className="w-3 h-3" />
+                  {l.dtmf_selected}{l.dtmf_label ? ` · ${l.dtmf_label}` : ''}
+                </span>
+              ) : <span className="text-slate-300">—</span>
+            },
             { key: 'updated_at', label: 'Updated', render: (l) => new Date(l.updated_at).toLocaleString() }
           ]}
         />

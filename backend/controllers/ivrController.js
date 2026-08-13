@@ -70,9 +70,9 @@ function validateFlowBody(body) {
       errors.push(`node "${node.client_id}" references unknown next "${node.next}"`);
     }
     if (node.branches) {
-      for (const [matchValue, target] of Object.entries(node.branches)) {
-        if (!clientIds.has(target)) {
-          errors.push(`node "${node.client_id}" branch "${matchValue}" references unknown target "${target}"`);
+      for (const [matchValue, branch] of Object.entries(node.branches)) {
+        if (!clientIds.has(branch?.target)) {
+          errors.push(`node "${node.client_id}" branch "${matchValue}" references unknown target "${branch?.target}"`);
         }
       }
     }
@@ -100,10 +100,10 @@ async function persistFlowNodes(client, flowId, nodes) {
       ]);
     }
     if (node.branches) {
-      for (const [matchValue, target] of Object.entries(node.branches)) {
+      for (const [matchValue, branch] of Object.entries(node.branches)) {
         await client.query(
-          `INSERT INTO ivr_node_branches (node_id, match_value, next_node_id) VALUES ($1, $2, $3)`,
-          [idByClientId.get(node.client_id), matchValue, idByClientId.get(target)]
+          `INSERT INTO ivr_node_branches (node_id, match_value, next_node_id, label) VALUES ($1, $2, $3, $4)`,
+          [idByClientId.get(node.client_id), matchValue, idByClientId.get(branch.target), branch.label || null]
         );
       }
     }
@@ -210,7 +210,7 @@ export async function getFlow(req, res) {
     const branchesByNode = new Map();
     for (const branch of branchesResult.rows) {
       if (!branchesByNode.has(branch.node_id)) branchesByNode.set(branch.node_id, {});
-      branchesByNode.get(branch.node_id)[branch.match_value] = branch.next_node_id;
+      branchesByNode.get(branch.node_id)[branch.match_value] = { target: branch.next_node_id, label: branch.label || '' };
     }
 
     const nodes = nodesResult.rows.map((n) => ({

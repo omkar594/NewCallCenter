@@ -120,6 +120,24 @@ async function handleMenu(node, state, flowCtx) {
     // dialplan version's 't' (timeout) behavior.
     return node.id;
   }
+
+  // Record which digit the caller actually pressed - and, if it matched a configured branch,
+  // that branch's optional label (e.g. "Balance Inquiry") - for the campaign report. This is a
+  // snapshot at press-time (see campaign_leads.dtmf_label's comment in server.js): editing the
+  // flow's labels later must never rewrite what a past call's report already showed. Still
+  // recorded even when the digit matches no branch - an invalid keypress is useful to see too.
+  if (state.leadId) {
+    const matchedBranch = (flowCtx.branchesByNode.get(node.id) || []).find((b) => b.match_value === digit);
+    try {
+      await pool.query(
+        `UPDATE campaign_leads SET dtmf_selected = $1, dtmf_label = $2, updated_at = NOW() WHERE id = $3`,
+        [digit, matchedBranch?.label || null, state.leadId]
+      );
+    } catch (err) {
+      console.error(`[IvrFlowEngine] Failed to record DTMF for lead ${state.leadId}: ${err.message}`);
+    }
+  }
+
   const nextNodeId = followBranch(node, state, flowCtx, digit);
   // No branch defined for this digit - matches the dialplan version's 'i' (invalid) behavior.
   return nextNodeId || node.id;

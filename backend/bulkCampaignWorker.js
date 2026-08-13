@@ -178,6 +178,13 @@ async function finalizeLead(leadId, campaignId, dialStatus, durationSec, tenantI
   // busy/no-answer/failed leads pass durationSec=0/undefined and cost nothing (see
   // utils/creditCalculator.js).
   const credits = dialStatus === 'answered' ? creditsForDuration(durationSec) : 0;
+  // A call that never connected gets another try if the campaign's max_retry_attempts allows
+  // it - never for 'answered' (nothing to retry) or 'opted_out' (handled by the CASE guard
+  // below regardless). Bounded by campaign_leads.attempts, which claimNextPendingLead() already
+  // increments on every claim, so "attempts <= max_retry_attempts" is exactly "tries used so far
+  // (including this one) still fit inside 1 + max_retry_attempts total tries allowed."
+  const retryEligible = ['busy', 'no-answer', 'failed'].includes(dialStatus);
+  let wasRequeued = false;
 
   const client = await pool.connect();
   try {
@@ -188,17 +195,29 @@ async function finalizeLead(leadId, campaignId, dialStatus, durationSec, tenantI
     // this function reacts to fires moments later, and without the CASE guard below would
     // overwrite 'opted_out' back to 'answered' since the call genuinely did answer. Once a lead
     // is opted_out, that's terminal - never let the normal answered/busy/failed finalize clobber it.
-    await client.query(
-      `UPDATE campaign_leads
-       SET dial_status = CASE WHEN dial_status = 'opted_out' THEN dial_status ELSE $1 END,
-           call_duration = $2, updated_at = NOW()
-       WHERE id = $3`,
-      [dialStatus, durationSec, leadId]
+    const leadResult = await client.query(
+      `UPDATE campaign_leads cl
+       SET dial_status = CASE
+             WHEN cl.dial_status = 'opted_out' THEN cl.dial_status
+             WHEN $1 AND cl.attempts <= vc.max_retry_attempts THEN 'pending'
+             ELSE $2
+           END,
+           call_duration = $3, updated_at = NOW()
+       FROM voice_campaigns vc
+       WHERE cl.id = $4 AND vc.id = cl.campaign_id
+       RETURNING cl.dial_status`,
+      [retryEligible, dialStatus, durationSec, leadId]
     );
-    await client.query(
-      `UPDATE voice_campaigns SET processed_leads = processed_leads + 1 WHERE id = $1`,
-      [campaignId]
-    );
+    // Requeued back to 'pending' isn't actually processed yet - only count it toward the
+    // campaign's progress once it lands in a real terminal state (matches the campaign
+    // detail/list pages' processed_leads/total_leads progress display).
+    wasRequeued = leadResult.rows[0]?.dial_status === 'pending';
+    if (!wasRequeued) {
+      await client.query(
+        `UPDATE voice_campaigns SET processed_leads = processed_leads + 1 WHERE id = $1`,
+        [campaignId]
+      );
+    }
 
     if (credits > 0 && tenantId) {
       const tenantResult = await client.query(
@@ -234,7 +253,11 @@ async function finalizeLead(leadId, campaignId, dialStatus, durationSec, tenantI
     client.release();
   }
 
-  console.log(`[Worker] Lead ${leadId} finalized: ${dialStatus} (${durationSec}s)${credits > 0 ? `, ${credits} credit(s) charged` : ''}`);
+  if (wasRequeued) {
+    console.log(`[Worker] Lead ${leadId}: ${dialStatus}, requeued for another attempt`);
+  } else {
+    console.log(`[Worker] Lead ${leadId} finalized: ${dialStatus} (${durationSec}s)${credits > 0 ? `, ${credits} credit(s) charged` : ''}`);
+  }
 }
 
 // Dispatches one lead and tracks it through to REAL completion via AMI events, instead of
@@ -291,7 +314,6 @@ async function dispatchLead(lead) {
     return;
   }
 
-  const dispatchedAt = Date.now();
   const originateResponse = await asteriskService.waitForEvent(
     'OriginateResponse',
     (evt) => evt.ActionID === actionId,
@@ -300,7 +322,8 @@ async function dispatchLead(lead) {
 
   if (!originateResponse) {
     console.warn(`[Worker] Lead ${lead.lead_id}: no OriginateResponse within ${ORIGINATE_RESPONSE_TIMEOUT_MS}ms - treating as failed and freeing the slot`);
-    await finalizeLead(lead.lead_id, lead.campaign_id, 'failed', Math.round((Date.now() - dispatchedAt) / 1000), lead.tenant_id);
+    // 0, not elapsed wait time - the call never connected, so there's no real duration to show.
+    await finalizeLead(lead.lead_id, lead.campaign_id, 'failed', 0, lead.tenant_id);
     return;
   }
 
@@ -317,15 +340,15 @@ async function dispatchLead(lead) {
       return;
     }
     console.log(`[Worker] Lead ${lead.lead_id}: call did not connect (${status}, reason=${originateResponse.Reason})`);
-    await finalizeLead(lead.lead_id, lead.campaign_id, status, Math.round((Date.now() - dispatchedAt) / 1000), lead.tenant_id);
+    // 0, not elapsed wait time - same reasoning as the no-OriginateResponse branch above.
+    await finalizeLead(lead.lead_id, lead.campaign_id, status, 0, lead.tenant_id);
     return;
   }
 
   // Call connected - originateResponse.Response === 'Success' is Asterisk's own signal that the
   // callee actually answered (AMI only reports Originate as Success once the far end picks up),
-  // so this is the real "call connected" instant - captured here rather than reusing
-  // dispatchedAt, which was set before ringing even started. Credit billing (see finalizeLead
-  // below) must be charged on this connected duration only, not ring time + talk time.
+  // so this is the real "call connected" instant. Credit billing and call_duration (see
+  // finalizeLead below) must be charged on this connected duration only, never ring/wait time.
   const answeredAt = Date.now();
 
   // The SIM channel stays genuinely busy through ringing + prompt playback, so keep this lead

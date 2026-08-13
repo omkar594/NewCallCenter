@@ -237,7 +237,7 @@ export async function getCampaignReport(req, res) {
     const campaign = campaignResult.rows[0];
 
     const leadsResult = await executeTenantQuery(null, `
-      SELECT id, phone_number, customer_name, dial_status, attempts, call_duration, updated_at
+      SELECT id, phone_number, customer_name, dial_status, attempts, call_duration, dtmf_selected, dtmf_label, updated_at
       FROM campaign_leads
       WHERE campaign_id = $1
       ORDER BY updated_at DESC
@@ -267,7 +267,11 @@ export async function getCampaignReport(req, res) {
 
 // 3. Initiate Bulk Outbound Voice Broadcast (Supports JSON payloads OR Multipart Form-Data)
 export async function createBroadcastCampaign(req, res) {
-  const { name, allowedPorts, phoneNumbers, audioBase64, ivrFlowId } = req.body;
+  const { name, allowedPorts, phoneNumbers, audioBase64, ivrFlowId, retryCount } = req.body;
+  // "Additional tries after the first" for a lead that ends busy/no-answer/failed - clamped so a
+  // malformed/malicious value can't set an unbounded retry loop. See bulkCampaignWorker.js's
+  // finalizeLead for how this is actually applied.
+  const maxRetryAttempts = Math.min(Math.max(parseInt(retryCount, 10) || 0, 0), 3);
 
   if (!name) {
     return res.status(400).json({ error: 'Campaign name is required' });
@@ -494,17 +498,17 @@ export async function createBroadcastCampaign(req, res) {
     let campaignResult;
     try {
       campaignResult = await executeTenantQuery(null, `
-        INSERT INTO voice_campaigns (tenant_id, name, audio_url, status, allowed_ports, total_leads, ivr_flow_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO voice_campaigns (tenant_id, name, audio_url, status, allowed_ports, total_leads, ivr_flow_id, max_retry_attempts)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING *
-      `, [campaignTenantId, name, audioFilename, initialStatus, parsedPorts, leads.length, ivrFlowIdValue]);
+      `, [campaignTenantId, name, audioFilename, initialStatus, parsedPorts, leads.length, ivrFlowIdValue, maxRetryAttempts]);
     } catch (err) {
       if (err.message.includes('tenant_id')) {
         campaignResult = await executeTenantQuery(null, `
-          INSERT INTO voice_campaigns (name, audio_url, status, allowed_ports, total_leads, ivr_flow_id)
-          VALUES ($1, $2, $3, $4, $5, $6)
+          INSERT INTO voice_campaigns (name, audio_url, status, allowed_ports, total_leads, ivr_flow_id, max_retry_attempts)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
           RETURNING *
-        `, [name, audioFilename, initialStatus, parsedPorts, leads.length, ivrFlowIdValue]);
+        `, [name, audioFilename, initialStatus, parsedPorts, leads.length, ivrFlowIdValue, maxRetryAttempts]);
       } else {
         throw err;
       }
