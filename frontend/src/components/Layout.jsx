@@ -37,10 +37,10 @@ export default function Layout() {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50">
-      <aside className="w-60 shrink-0 bg-slate-900 text-slate-200 flex flex-col">
-        <div className="flex items-center gap-2 px-4 py-4 text-white font-semibold text-lg border-b border-slate-800">
-          <Radio className="w-5 h-5 text-brand-500" />
+    <div className="flex h-screen" style={{ backgroundColor: '#f3f6f5' }}>
+      <aside className="w-60 shrink-0 bg-ink-900 text-ink-200 flex flex-col">
+        <div className="flex items-center gap-2 px-4 py-4 text-white font-semibold text-lg border-b border-ink-700">
+          <Radio className="w-5 h-5 text-brand-400" />
           CallCenter
         </div>
         <nav className="flex-1 px-2 py-4 space-y-1">
@@ -50,8 +50,8 @@ export default function Layout() {
               to={to}
               end={end}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
-                  isActive ? 'bg-brand-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                  isActive ? 'bg-brand-500 text-white' : 'text-ink-300 hover:bg-ink-800 hover:text-white'
                 }`
               }
             >
@@ -60,12 +60,12 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
-        <div className="px-4 py-4 border-t border-slate-800 text-xs text-slate-400">
-          <div className="text-slate-200 font-medium truncate">{user?.username}</div>
+        <div className="px-4 py-4 border-t border-ink-700 text-xs text-ink-400">
+          <div className="text-ink-100 font-medium truncate">{user?.username}</div>
           <div className="truncate">{user?.tenant_name || 'Platform Owner'}</div>
           <button
             onClick={handleLogout}
-            className="mt-3 flex items-center gap-2 text-slate-400 hover:text-white text-xs"
+            className="mt-3 flex items-center gap-2 text-ink-400 hover:text-white text-xs"
           >
             <LogOut className="w-3.5 h-3.5" />
             Log out

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, AlertCircle, CheckCircle2, PowerOff, Power } from 'lucide-react';
+import { ArrowLeft, AlertCircle, CheckCircle2, PowerOff, Power, Coins, Plus } from 'lucide-react';
 import { apiGet, apiPut, apiPost } from '../../api/client.js';
 import DataTable from '../../components/DataTable.jsx';
 import StatusBadge from '../../components/StatusBadge.jsx';
@@ -20,20 +20,28 @@ export default function TenantDetail() {
   const [showLifecycleModal, setShowLifecycleModal] = useState(false);
   const [lifecycleError, setLifecycleError] = useState('');
   const [lifecycleSubmitting, setLifecycleSubmitting] = useState(false);
+  const [transactions, setTransactions] = useState([]);
+  const [showCreditModal, setShowCreditModal] = useState(false);
+  const [creditAmount, setCreditAmount] = useState('');
+  const [creditNote, setCreditNote] = useState('');
+  const [creditError, setCreditError] = useState('');
+  const [creditSubmitting, setCreditSubmitting] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [tenants, ports, tenantCampaigns, tenantFlows] = await Promise.all([
+      const [tenants, ports, tenantCampaigns, tenantFlows, creditTransactions] = await Promise.all([
         apiGet('/api/auth/clients'),
         apiGet('/api/gateways/ports'),
         apiGet(`/api/campaigns?tenantId=${tenantId}`),
-        apiGet(`/api/ivr/flows?tenantId=${tenantId}`)
+        apiGet(`/api/ivr/flows?tenantId=${tenantId}`),
+        apiGet(`/api/auth/clients/${tenantId}/credits/transactions`)
       ]);
       setTenant(tenants.find((t) => t.id === tenantId) || null);
       setAllPorts(ports);
       setSelectedPorts(ports.filter((p) => p.tenant_id === tenantId).map((p) => p.port_number));
       setCampaigns(tenantCampaigns);
       setFlows(tenantFlows);
+      setTransactions(creditTransactions);
     } catch (err) {
       setError(err.message);
     }
@@ -64,6 +72,27 @@ export default function TenantDetail() {
   };
 
   const isActive = (tenant?.status || 'active') === 'active';
+
+  const handleAddCredits = async () => {
+    setCreditError('');
+    const amount = Number(creditAmount);
+    if (!Number.isInteger(amount) || amount <= 0) {
+      setCreditError('Enter a positive whole number of credits.');
+      return;
+    }
+    setCreditSubmitting(true);
+    try {
+      await apiPost(`/api/auth/clients/${tenantId}/credits`, { amount, note: creditNote || undefined });
+      setShowCreditModal(false);
+      setCreditAmount('');
+      setCreditNote('');
+      await load();
+    } catch (err) {
+      setCreditError(err.message);
+    } finally {
+      setCreditSubmitting(false);
+    }
+  };
 
   const handleLifecycleAction = async () => {
     setLifecycleError('');
@@ -102,19 +131,80 @@ export default function TenantDetail() {
               <h1 className="text-xl font-semibold text-slate-900">{tenant.name}</h1>
               <StatusBadge status={tenant.status || 'active'} />
             </div>
-            <p className="text-sm text-slate-500">{tenant.subdomain} - {tenant.admin_count} admin(s)</p>
+            <p className="text-sm text-slate-500">
+              {tenant.subdomain} - {tenant.admin_count} admin(s) -{' '}
+              <span className={tenant.credit_balance > 0 ? 'text-slate-700' : 'text-red-600 font-medium'}>
+                {tenant.credit_balance ?? 0} credits remaining
+              </span>
+            </p>
           </div>
-          <button
-            onClick={() => { setLifecycleError(''); setShowLifecycleModal(true); }}
-            className={`flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-md ${
-              isActive ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-            }`}
-          >
-            {isActive ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
-            {isActive ? 'Deactivate Client' : 'Reactivate Client'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setCreditError(''); setShowCreditModal(true); }}
+              className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-600 text-white"
+            >
+              <Plus className="w-4 h-4" /> Add Credits
+            </button>
+            <button
+              onClick={() => { setLifecycleError(''); setShowLifecycleModal(true); }}
+              className={`flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-md ${
+                isActive ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+              }`}
+            >
+              {isActive ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
+              {isActive ? 'Deactivate Client' : 'Reactivate Client'}
+            </button>
+          </div>
         </div>
       </div>
+
+      {showCreditModal && (
+        <Modal title="Add Credits" onClose={() => setShowCreditModal(false)}>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              Current balance: <strong>{tenant.credit_balance ?? 0} credits</strong>. Every answered call deducts 1
+              credit per 15 seconds of connected duration.
+            </p>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Credits to add</label>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={creditAmount}
+                onChange={(e) => setCreditAmount(e.target.value)}
+                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Note (optional)</label>
+              <input
+                value={creditNote}
+                onChange={(e) => setCreditNote(e.target.value)}
+                placeholder="e.g. Monthly top-up"
+                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+            {creditError && (
+              <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
+                <AlertCircle className="w-4 h-4" /> {creditError}
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={handleAddCredits}
+                disabled={creditSubmitting}
+                className="text-sm font-medium px-4 py-2 rounded-md text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-60"
+              >
+                {creditSubmitting ? 'Adding...' : 'Add Credits'}
+              </button>
+              <button onClick={() => setShowCreditModal(false)} className="text-sm text-slate-500 hover:text-slate-700 px-4 py-2">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {showLifecycleModal && (
         <Modal title={isActive ? 'Deactivate this client?' : 'Reactivate this client?'} onClose={() => setShowLifecycleModal(false)}>
@@ -230,6 +320,33 @@ export default function TenantDetail() {
             { key: 'total_leads', label: 'Leads' },
             { key: 'processed_leads', label: 'Processed' },
             { key: 'allowed_ports', label: 'Ports' }
+          ]}
+        />
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="font-medium text-slate-900 flex items-center gap-2">
+          <Coins className="w-4 h-4 text-amber-500" /> Credit History
+        </h2>
+        <DataTable
+          rows={transactions}
+          emptyMessage="No credit activity yet."
+          columns={[
+            {
+              key: 'type',
+              label: 'Type',
+              render: (t) => (
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                  t.type === 'topup' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {t.type === 'topup' ? 'Top-up' : 'Deduction'}
+                </span>
+              )
+            },
+            { key: 'amount', label: 'Amount', render: (t) => (t.amount > 0 ? `+${t.amount}` : t.amount) },
+            { key: 'balance_after', label: 'Balance After' },
+            { key: 'note', label: 'Note', render: (t) => t.note || '-' },
+            { key: 'created_at', label: 'When', render: (t) => new Date(t.created_at).toLocaleString() }
           ]}
         />
       </section>

@@ -2,6 +2,7 @@ import pg from 'pg';
 import dotenv from 'dotenv';
 import asteriskService from './services/asteriskService.js';
 import { normalizePhoneNumber } from './utils/phoneNormalizer.js';
+import { creditsForDuration } from './utils/creditCalculator.js';
 
 dotenv.config();
 
@@ -116,7 +117,7 @@ async function getMaxConcurrentCalls() {
 async function claimNextPendingLead() {
   const result = await pool.query(`
     WITH target_lead AS (
-      SELECT cl.id, cl.phone_number, cl.customer_name, cl.campaign_id, cl.language_code, vc.audio_url, vc.allowed_ports, vc.ivr_flow_id
+      SELECT cl.id, cl.phone_number, cl.customer_name, cl.campaign_id, cl.language_code, vc.audio_url, vc.allowed_ports, vc.ivr_flow_id, vc.tenant_id
       FROM campaign_leads cl
       JOIN voice_campaigns vc ON cl.campaign_id = vc.id
       WHERE cl.dial_status = 'pending' AND vc.status IN ('running', 'pending')
@@ -143,7 +144,8 @@ async function claimNextPendingLead() {
       target_lead.language_code,
       target_lead.audio_url,
       target_lead.allowed_ports,
-      target_lead.ivr_flow_id;
+      target_lead.ivr_flow_id,
+      target_lead.tenant_id;
   `);
   return result.rows[0] || null;
 }
@@ -171,24 +173,68 @@ async function requeueLead(leadId) {
   );
 }
 
-async function finalizeLead(leadId, campaignId, dialStatus, durationSec) {
-  // Workstream 7: a caller who presses 9 gets marked 'opted_out' by the opt-out webhook
-  // (campaignController.js's handleOptOutWebhook) WHILE the call is still up - the real Hangup
-  // this function reacts to fires moments later, and without the CASE guard below would
-  // overwrite 'opted_out' back to 'answered' since the call genuinely did answer. Once a lead
-  // is opted_out, that's terminal - never let the normal answered/busy/failed finalize clobber it.
-  await pool.query(
-    `UPDATE campaign_leads
-     SET dial_status = CASE WHEN dial_status = 'opted_out' THEN dial_status ELSE $1 END,
-         call_duration = $2, updated_at = NOW()
-     WHERE id = $3`,
-    [dialStatus, durationSec, leadId]
-  );
-  await pool.query(
-    `UPDATE voice_campaigns SET processed_leads = processed_leads + 1 WHERE id = $1`,
-    [campaignId]
-  );
-  console.log(`[Worker] Lead ${leadId} finalized: ${dialStatus} (${durationSec}s)`);
+async function finalizeLead(leadId, campaignId, dialStatus, durationSec, tenantId) {
+  // Credit billing: only a genuinely answered call (real connected duration) is billable -
+  // busy/no-answer/failed leads pass durationSec=0/undefined and cost nothing (see
+  // utils/creditCalculator.js).
+  const credits = dialStatus === 'answered' ? creditsForDuration(durationSec) : 0;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Workstream 7: a caller who presses 9 gets marked 'opted_out' by the opt-out webhook
+    // (campaignController.js's handleOptOutWebhook) WHILE the call is still up - the real Hangup
+    // this function reacts to fires moments later, and without the CASE guard below would
+    // overwrite 'opted_out' back to 'answered' since the call genuinely did answer. Once a lead
+    // is opted_out, that's terminal - never let the normal answered/busy/failed finalize clobber it.
+    await client.query(
+      `UPDATE campaign_leads
+       SET dial_status = CASE WHEN dial_status = 'opted_out' THEN dial_status ELSE $1 END,
+           call_duration = $2, updated_at = NOW()
+       WHERE id = $3`,
+      [dialStatus, durationSec, leadId]
+    );
+    await client.query(
+      `UPDATE voice_campaigns SET processed_leads = processed_leads + 1 WHERE id = $1`,
+      [campaignId]
+    );
+
+    if (credits > 0 && tenantId) {
+      const tenantResult = await client.query(
+        `UPDATE tenants SET credit_balance = credit_balance - $1 WHERE id = $2 RETURNING credit_balance`,
+        [credits, tenantId]
+      );
+      const newBalance = tenantResult.rows[0]?.credit_balance;
+      await client.query(
+        `INSERT INTO credit_transactions (tenant_id, type, amount, balance_after, campaign_id, lead_id)
+         VALUES ($1, 'deduction', $2, $3, $4, $5)`,
+        [tenantId, -credits, newBalance, campaignId, leadId]
+      );
+      // Balance exhausted mid-campaign: cancel this tenant's active campaigns so
+      // claimNextPendingLead()'s `vc.status IN ('running', 'pending')` predicate stops handing
+      // out any more of its leads. Any call already dispatched/connected finishes normally -
+      // this only blocks leads not yet claimed.
+      if (newBalance !== undefined && newBalance <= 0) {
+        await client.query(
+          `UPDATE voice_campaigns SET status = 'cancelled', updated_at = NOW()
+           WHERE tenant_id = $1 AND status IN ('preparing', 'running', 'pending')`,
+          [tenantId]
+        );
+        console.warn(`[Worker] Tenant ${tenantId} credit balance reached ${newBalance} - active campaigns cancelled.`);
+      }
+    }
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error(`[Worker] finalizeLead failed for lead ${leadId}:`, err.message || err);
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  console.log(`[Worker] Lead ${leadId} finalized: ${dialStatus} (${durationSec}s)${credits > 0 ? `, ${credits} credit(s) charged` : ''}`);
 }
 
 // Dispatches one lead and tracks it through to REAL completion via AMI events, instead of
@@ -235,13 +281,13 @@ async function dispatchLead(lead) {
     ack = await ackPromise;
   } catch (err) {
     console.error(`[Worker] AMI rejected dispatch for lead ${lead.lead_id}: ${err.message}`);
-    await finalizeLead(lead.lead_id, lead.campaign_id, 'failed', 0);
+    await finalizeLead(lead.lead_id, lead.campaign_id, 'failed', 0, lead.tenant_id);
     return;
   }
 
   if (ack.Response !== 'Success') {
     console.error(`[Worker] Asterisk rejected Originate for lead ${lead.lead_id}: ${ack.Message}`);
-    await finalizeLead(lead.lead_id, lead.campaign_id, 'failed', 0);
+    await finalizeLead(lead.lead_id, lead.campaign_id, 'failed', 0, lead.tenant_id);
     return;
   }
 
@@ -254,7 +300,7 @@ async function dispatchLead(lead) {
 
   if (!originateResponse) {
     console.warn(`[Worker] Lead ${lead.lead_id}: no OriginateResponse within ${ORIGINATE_RESPONSE_TIMEOUT_MS}ms - treating as failed and freeing the slot`);
-    await finalizeLead(lead.lead_id, lead.campaign_id, 'failed', Math.round((Date.now() - dispatchedAt) / 1000));
+    await finalizeLead(lead.lead_id, lead.campaign_id, 'failed', Math.round((Date.now() - dispatchedAt) / 1000), lead.tenant_id);
     return;
   }
 
@@ -271,7 +317,7 @@ async function dispatchLead(lead) {
       return;
     }
     console.log(`[Worker] Lead ${lead.lead_id}: call did not connect (${status}, reason=${originateResponse.Reason})`);
-    await finalizeLead(lead.lead_id, lead.campaign_id, status, Math.round((Date.now() - dispatchedAt) / 1000));
+    await finalizeLead(lead.lead_id, lead.campaign_id, status, Math.round((Date.now() - dispatchedAt) / 1000), lead.tenant_id);
     return;
   }
 
@@ -303,7 +349,7 @@ async function dispatchLead(lead) {
   }
 
   const durationSec = Math.round((Date.now() - dispatchedAt) / 1000);
-  await finalizeLead(lead.lead_id, lead.campaign_id, 'answered', durationSec);
+  await finalizeLead(lead.lead_id, lead.campaign_id, 'answered', durationSec, lead.tenant_id);
 }
 
 async function tick() {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Radio, AlertCircle, PhoneCall, Workflow, ShieldCheck, Lock, User } from 'lucide-react';
+import { Radio, AlertCircle, PhoneCall, Workflow, ShieldCheck, Lock, User, Activity, Wifi } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { homeForRole } from '../components/ProtectedRoute.jsx';
 import PlexusBackground from '../components/PlexusBackground.jsx';
@@ -66,11 +66,38 @@ export default function Login() {
         </div>
       </div>
 
-      <div className="relative flex flex-1 items-center justify-center px-4 py-12 bg-slate-950 lg:bg-slate-50">
+      <div className="relative flex flex-1 items-center justify-center px-4 py-12 bg-slate-950 lg:bg-[#f3f6f5] overflow-hidden">
         <div className="lg:hidden absolute inset-0 overflow-hidden">
           <PlexusBackground />
           <div className="absolute inset-0 bg-slate-950/70" />
         </div>
+
+        {/* Technical chrome: dot-grid + soft glows + corner brackets, desktop only */}
+        <div
+          className="hidden lg:block pointer-events-none absolute inset-0"
+          style={{
+            backgroundImage: 'radial-gradient(circle, rgba(78,148,143,0.35) 1px, transparent 1px)',
+            backgroundSize: '28px 28px'
+          }}
+        />
+        <div className="hidden lg:block pointer-events-none absolute -top-24 -right-24 w-96 h-96 rounded-full bg-brand-300/25 blur-3xl" />
+        <div className="hidden lg:block pointer-events-none absolute -bottom-24 -left-16 w-80 h-80 rounded-full bg-coral-300/20 blur-3xl" />
+
+        <div className="hidden lg:flex items-center gap-2 absolute top-6 right-6 text-[11px] font-medium tracking-wide text-brand-700 bg-white/70 backdrop-blur border border-brand-200 rounded-full px-3 py-1.5">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-brand-500 opacity-75 animate-ping" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-brand-500" />
+          </span>
+          ALL SYSTEMS OPERATIONAL
+        </div>
+        <div className="hidden lg:flex items-center gap-4 absolute bottom-6 left-6 text-[11px] font-medium tracking-wide text-ink-400">
+          <span className="flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-brand-600" /> TLS ENCRYPTED</span>
+          <span className="flex items-center gap-1.5"><Wifi className="w-3.5 h-3.5 text-brand-600" /> REALTIME SYNC</span>
+          <span className="flex items-center gap-1.5"><Activity className="w-3.5 h-3.5 text-brand-600" /> LIVE MONITORING</span>
+        </div>
+        {/* corner brackets */}
+        <div className="hidden lg:block pointer-events-none absolute top-10 left-10 w-8 h-8 border-t-2 border-l-2 border-brand-300/60 rounded-tl-md" />
+        <div className="hidden lg:block pointer-events-none absolute bottom-10 right-10 w-8 h-8 border-b-2 border-r-2 border-brand-300/60 rounded-br-md" />
 
         <div className="relative z-10 w-full max-w-sm">
           <div className="flex items-center gap-2 mb-6 lg:hidden justify-center">
@@ -78,15 +105,15 @@ export default function Login() {
             <h1 className="text-lg font-semibold text-white">CallCenter Console</h1>
           </div>
 
-          <div className="bg-white/95 backdrop-blur lg:bg-white rounded-2xl shadow-2xl shadow-black/40 border border-white/10 lg:border-slate-200 p-8">
+          <div className="bg-white/95 backdrop-blur lg:bg-white/90 rounded-2xl shadow-2xl shadow-black/40 lg:shadow-brand-900/10 border border-white/10 lg:border-brand-100 p-8">
             <div className="mb-6">
-              <h2 className="text-xl font-semibold text-slate-900">Welcome back</h2>
-              <p className="text-sm text-slate-500 mt-1">Sign in to your console</p>
+              <h2 className="text-xl font-semibold text-ink-900">Welcome back</h2>
+              <p className="text-sm text-ink-400 mt-1">Sign in to your console</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Username</label>
+                <label className="block text-sm font-medium text-ink-700 mb-1">Username</label>
                 <div className="relative">
                   <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
@@ -99,7 +126,7 @@ export default function Login() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                <label className="block text-sm font-medium text-ink-700 mb-1">Password</label>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
@@ -127,7 +154,7 @@ export default function Login() {
             </form>
           </div>
 
-          <p className="text-center text-xs text-slate-400 lg:text-slate-500 mt-6">
+          <p className="text-center text-xs text-slate-400 lg:text-ink-400 mt-6">
             Secured multi-tenant access · CallCenter Console
           </p>
         </div>

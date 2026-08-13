@@ -33,6 +33,7 @@ CREATE TABLE tenants (
     name VARCHAR(255) NOT NULL UNIQUE,
     subdomain VARCHAR(100) NOT NULL UNIQUE,
     status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'deactivated')),
+    credit_balance INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -254,6 +255,23 @@ CREATE TABLE dnc_numbers (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_dnc_phone ON dnc_numbers(phone_number);
+
+-- 14b. Credit billing ledger - one row per top-up (positive amount) or per-call deduction
+-- (negative amount, tied to the campaign/lead that earned it). See utils/creditCalculator.js
+-- and authController.js's addCredits/getCreditTransactions.
+CREATE TABLE credit_transactions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    type VARCHAR(20) NOT NULL CHECK (type IN ('topup', 'deduction')),
+    amount INTEGER NOT NULL,
+    balance_after INTEGER NOT NULL,
+    campaign_id UUID REFERENCES voice_campaigns(id) ON DELETE SET NULL,
+    lead_id UUID REFERENCES campaign_leads(id) ON DELETE SET NULL,
+    note TEXT,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_credit_transactions_tenant ON credit_transactions(tenant_id, created_at DESC);
 
 -- 15. Asterisk Realtime Architecture tables (Workstream 7) - dynamic per-agent SIP endpoints.
 -- res_config_pgsql on the EC2 Asterisk box reads these directly (see telephony_config/sorcery.conf

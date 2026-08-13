@@ -17,7 +17,7 @@ const LANGUAGE_HEADER_ALIASES = ['language', 'language_code', 'lang'];
 const DEFAULT_LEAD_LANGUAGE_CODE = 'en-US';
 // Same default every other write path in this backend falls back to when a caller (e.g.
 // super_admin, whose JWT tenant_id already points at this same default) doesn't have a distinct
-// tenant of their own - matches ivrController.js's DEFAULT_TENANT_ID.
+// tenant of their own - matches ivrController.js's DEFAULThttps://meet.google.com/gtf-cdwf-sbg_TENANT_ID.
 const DEFAULT_TENANT_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
 // PostgreSQL's wire protocol caps bound parameters at 65535 per query (an unsigned 16-bit
 // count field, not a config value). Each lead contributes 3 params (phone, name, language)
@@ -196,6 +196,29 @@ export async function getCampaigns(req, res) {
   }
 }
 
+// Live "Ongoing Calls" widget: every lead currently mid-call (dial_status='processing').
+// cl.updated_at is exactly the timestamp claimNextPendingLead() sets the instant a lead starts
+// dialing (bulkCampaignWorker.js) - so `now - dispatched_at` on the frontend is a genuine live
+// call duration, not simulated. Same tenantId-override pattern as getCampaigns above.
+export async function getLiveCalls(req, res) {
+  const isSuperAdmin = req.user?.role === 'super_admin';
+  const tenantId = (isSuperAdmin && req.query.tenantId) ? req.query.tenantId : resolveTenantId(req);
+  try {
+    const result = await executeTenantQuery(null, `
+      SELECT cl.id AS lead_id, cl.customer_name, cl.phone_number, cl.campaign_id,
+             vc.name AS campaign_name, cl.updated_at AS dispatched_at
+      FROM campaign_leads cl
+      JOIN voice_campaigns vc ON cl.campaign_id = vc.id
+      WHERE cl.dial_status = 'processing' AND vc.tenant_id = $1
+      ORDER BY cl.updated_at ASC
+    `, [tenantId]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('[CampaignController] getLiveCalls failed:', error);
+    res.status(500).json({ error: 'Failed to retrieve live calls' });
+  }
+}
+
 // 2. Get detailed campaign status report (Connected vs Failed breakdown)
 export async function getCampaignReport(req, res) {
   const { id } = req.params;
@@ -248,6 +271,21 @@ export async function createBroadcastCampaign(req, res) {
 
   if (!name) {
     return res.status(400).json({ error: 'Campaign name is required' });
+  }
+
+  // Credit billing: block a new campaign outright once the tenant is out of credits, before
+  // any CSV/audio work happens - see bulkCampaignWorker.js's finalizeLead for the deduction
+  // side and authController.js's addCredits for how a tenant gets topped up.
+  {
+    const creditCheckTenantId = resolveTenantId(req);
+    const creditResult = await executeTenantQuery(null,
+      `SELECT credit_balance FROM tenants WHERE id = $1`,
+      [creditCheckTenantId]
+    );
+    const creditBalance = creditResult.rows[0]?.credit_balance ?? 0;
+    if (creditBalance <= 0) {
+      return res.status(402).json({ error: 'Insufficient credits. Contact your administrator to top up.' });
+    }
   }
 
   // Audio prompt input check (Supports file upload OR Base64 JSON).

@@ -1,5 +1,5 @@
 import express from 'express';
-import { login, logout, createAgent, getAgents, getMySipCredentials, createClient, getClients, deactivateClient, reactivateClient } from '../controllers/authController.js';
+import { login, logout, createAgent, getAgents, getMySipCredentials, createClient, getClients, deactivateClient, reactivateClient, addCredits, getCreditTransactions, getMyCredits } from '../controllers/authController.js';
 import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -17,6 +17,13 @@ router.get('/clients', authenticateToken, authorizeRoles(['super_admin']), getCl
 // each does and why.
 router.post('/clients/:tenantId/deactivate', authenticateToken, authorizeRoles(['super_admin']), deactivateClient);
 router.post('/clients/:tenantId/reactivate', authenticateToken, authorizeRoles(['super_admin']), reactivateClient);
+
+// Credit billing: only super_admin can top up a tenant's balance; a tenant's own users can only
+// view their balance/history (getCreditTransactions enforces the tenant match itself, since it's
+// also reachable by super_admin for any tenant).
+router.post('/clients/:tenantId/credits', authenticateToken, authorizeRoles(['super_admin']), addCredits);
+router.get('/clients/:tenantId/credits/transactions', authenticateToken, getCreditTransactions);
+router.get('/credits', authenticateToken, getMyCredits);
 
 // Workstream 7: agent provisioning + softphone credential fetch.
 router.post('/agents', authenticateToken, authorizeRoles(['super_admin', 'client_admin', 'team_leader']), createAgent);

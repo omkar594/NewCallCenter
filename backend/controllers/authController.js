@@ -195,7 +195,7 @@ export async function createClient(req, res) {
 export async function getClients(req, res) {
   try {
     const result = await pool.query(`
-      SELECT t.id, t.name, t.subdomain, t.status, t.created_at,
+      SELECT t.id, t.name, t.subdomain, t.status, t.credit_balance, t.created_at,
              COUNT(u.id) FILTER (WHERE u.role = 'client_admin') AS admin_count
       FROM tenants t
       LEFT JOIN users u ON u.tenant_id = t.id
@@ -206,6 +206,90 @@ export async function getClients(req, res) {
   } catch (error) {
     console.error('getClients failed:', error);
     res.status(500).json({ error: 'Failed to list clients' });
+  }
+}
+
+// Credit billing: super_admin-only top-up. The deduction side lives in
+// bulkCampaignWorker.js's finalizeLead - this is the only way a tenant's balance ever goes up.
+export async function addCredits(req, res) {
+  const { tenantId } = req.params;
+  const { amount, note } = req.body;
+  const parsedAmount = Number(amount);
+
+  if (!Number.isInteger(parsedAmount) || parsedAmount <= 0) {
+    return res.status(400).json({ error: 'amount must be a positive integer' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const tenantResult = await client.query(
+      `UPDATE tenants SET credit_balance = credit_balance + $1 WHERE id = $2 RETURNING id, name, credit_balance`,
+      [parsedAmount, tenantId]
+    );
+    if (!tenantResult.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+
+    await client.query(
+      `INSERT INTO credit_transactions (tenant_id, type, amount, balance_after, note, created_by)
+       VALUES ($1, 'topup', $2, $3, $4, $5)`,
+      [tenantId, parsedAmount, tenantResult.rows[0].credit_balance, note || null, req.user?.id || null]
+    );
+
+    await client.query('COMMIT');
+    res.json({
+      message: `${parsedAmount} credits added to ${tenantResult.rows[0].name}`,
+      tenant: tenantResult.rows[0]
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('addCredits failed:', error);
+    res.status(500).json({ error: 'Failed to add credits' });
+  } finally {
+    client.release();
+  }
+}
+
+// Ledger read: super_admin can view any tenant's history (?tenantId= path param below is
+// always required, matching the other /clients/:tenantId/* routes); client_admin/tenant users
+// can only ever reach this for their own tenant, enforced by the route requiring the caller's
+// own tenantId to match (checked here rather than trusting the URL param blindly).
+export async function getCreditTransactions(req, res) {
+  const { tenantId } = req.params;
+  const isSuperAdmin = req.user?.role === 'super_admin';
+
+  if (!isSuperAdmin && req.user?.tenant_id !== tenantId) {
+    return res.status(403).json({ error: 'Permission denied for this tenant' });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT id, type, amount, balance_after, campaign_id, lead_id, note, created_by, created_at
+       FROM credit_transactions
+       WHERE tenant_id = $1
+       ORDER BY created_at DESC
+       LIMIT 200`,
+      [tenantId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('getCreditTransactions failed:', error);
+    res.status(500).json({ error: 'Failed to load credit transactions' });
+  }
+}
+
+// Lightweight "my tenant's balance" read for any authenticated tenant user's dashboard widget.
+export async function getMyCredits(req, res) {
+  const tenantId = req.user?.tenant_id || DEFAULT_TENANT_ID;
+  try {
+    const result = await pool.query(`SELECT credit_balance FROM tenants WHERE id = $1`, [tenantId]);
+    res.json({ balance: result.rows[0]?.credit_balance ?? 0 });
+  } catch (error) {
+    console.error('getMyCredits failed:', error);
+    res.status(500).json({ error: 'Failed to load credit balance' });
   }
 }
 

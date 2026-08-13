@@ -3,7 +3,7 @@ import multer from 'multer';
 import os from 'os';
 import fs from 'fs';
 import path from 'path';
-import { getCampaigns, getCampaignReport, createBroadcastCampaign, handleCampaignCallback, handleOptOutWebhook } from '../controllers/campaignController.js';
+import { getCampaigns, getLiveCalls, getCampaignReport, createBroadcastCampaign, handleCampaignCallback, handleOptOutWebhook } from '../controllers/campaignController.js';
 import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 
 const AUDIO_FIELDS = new Set(['broadcastAudio', 'audioFile', 'audio', 'file']);
@@ -64,6 +64,10 @@ const requireCampaignAccess = [authenticateToken, authorizeRoles(['super_admin',
 
 // 1. Get all campaigns list
 router.get('/', requireCampaignAccess, getCampaigns);
+
+// 1b. Live "Ongoing Calls" widget - registered before '/:id' so "live-calls" is never matched
+// as a campaign id (same route-shadowing reason as /callback and /optout below).
+router.get('/live-calls', requireCampaignAccess, getLiveCalls);
 
 // 2. Create new Outbound Voice Broadcast Campaign
 router.post('/broadcast', requireCampaignAccess, optionalUpload, createBroadcastCampaign);
