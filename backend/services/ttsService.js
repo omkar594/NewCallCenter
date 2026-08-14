@@ -62,10 +62,13 @@ const PIPER_LENGTH_SCALE = process.env.PIPER_LENGTH_SCALE || '1.0';
 
 // Per-language tuning override, on top of the global defaults above. Indic Piper models
 // (hi_IN-priyamvada) are trained on noticeably less data than the English ones and read as more
-// monotone/chanting at the same noise_w - nudged higher here specifically for Hindi. Override or
-// add more languages via PIPER_LANGUAGE_TUNING='{"hi-IN":{"noiseW":"1.05"}}' without a redeploy.
+// monotone/chanting at the same noise_w - nudged up here specifically for Hindi. 1.05 was tried
+// first and confirmed live to overshoot into audible glitching/breaking mid-sentence - 0.85 stays
+// much closer to Piper's own flat-but-stable baseline (0.8) while still reading less robotic than
+// the un-tuned default. Override or add more languages via
+// PIPER_LANGUAGE_TUNING='{"hi-IN":{"noiseW":"0.9"}}' without a redeploy.
 const DEFAULT_LANGUAGE_TUNING = {
-  'hi-IN': { noiseScale: '0.78', noiseW: '1.05' }
+  'hi-IN': { noiseScale: '0.78', noiseW: '0.85' }
 };
 let languageTuningOverrides = {};
 try {
