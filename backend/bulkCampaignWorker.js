@@ -3,6 +3,8 @@ import dotenv from 'dotenv';
 import asteriskService from './services/asteriskService.js';
 import { normalizePhoneNumber } from './utils/phoneNormalizer.js';
 import { creditsForDuration } from './utils/creditCalculator.js';
+import logger from './utils/logger.js';
+import { captureException } from './utils/sentry.js';
 
 dotenv.config();
 
@@ -180,9 +182,11 @@ async function finalizeLead(leadId, campaignId, dialStatus, durationSec, tenantI
   const credits = dialStatus === 'answered' ? creditsForDuration(durationSec) : 0;
   // A call that never connected gets another try if the campaign's max_retry_attempts allows
   // it - never for 'answered' (nothing to retry) or 'opted_out' (handled by the CASE guard
-  // below regardless). Bounded by campaign_leads.attempts, which claimNextPendingLead() already
-  // increments on every claim, so "attempts <= max_retry_attempts" is exactly "tries used so far
-  // (including this one) still fit inside 1 + max_retry_attempts total tries allowed."
+  // below regardless). Bounded by campaign_leads.connect_attempts - deliberately NOT the same
+  // counter as `attempts` (which claimNextPendingLead() increments on every claim, including
+  // instant gateway-capacity "no line free right now" requeues in dispatchLead/requeueLead).
+  // Sharing one counter would let a lead burn its campaign-configured retry budget on gateway
+  // congestion alone, before ever getting a real busy/no-answer outcome.
   const retryEligible = ['busy', 'no-answer', 'failed'].includes(dialStatus);
   let wasRequeued = false;
 
@@ -197,9 +201,10 @@ async function finalizeLead(leadId, campaignId, dialStatus, durationSec, tenantI
     // is opted_out, that's terminal - never let the normal answered/busy/failed finalize clobber it.
     const leadResult = await client.query(
       `UPDATE campaign_leads cl
-       SET dial_status = CASE
+       SET connect_attempts = CASE WHEN $1 THEN cl.connect_attempts + 1 ELSE cl.connect_attempts END,
+           dial_status = CASE
              WHEN cl.dial_status = 'opted_out' THEN cl.dial_status
-             WHEN $1 AND cl.attempts <= vc.max_retry_attempts THEN 'pending'
+             WHEN $1 AND (cl.connect_attempts + 1) <= vc.max_retry_attempts THEN 'pending'
              ELSE $2
            END,
            call_duration = $3, updated_at = NOW()
@@ -240,23 +245,30 @@ async function finalizeLead(leadId, campaignId, dialStatus, durationSec, tenantI
            WHERE tenant_id = $1 AND status IN ('preparing', 'running', 'pending')`,
           [tenantId]
         );
-        console.warn(`[Worker] Tenant ${tenantId} credit balance reached ${newBalance} - active campaigns cancelled.`);
+        logger.warn({ tenantId, newBalance }, '[Worker] Tenant credit balance reached zero - active campaigns cancelled');
       }
+    } else if (credits > 0) {
+      // A billable call with no tenantId to bill it to must never fail silently - that's free,
+      // unbilled dialing. Only reachable today via campaignController.js's legacy fallback
+      // INSERT (used if voice_campaigns.tenant_id is somehow missing), but if it ever happens,
+      // it needs to be loud and visible, not a quiet no-op.
+      logger.error({ leadId, campaignId, credits }, '[Worker] BILLING GAP: lead earned credits but has no tenantId to charge - nothing was billed');
     }
 
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error(`[Worker] finalizeLead failed for lead ${leadId}:`, err.message || err);
+    logger.error({ leadId, err }, '[Worker] finalizeLead failed');
+    captureException(err, { leadId, campaignId, dialStatus });
     throw err;
   } finally {
     client.release();
   }
 
   if (wasRequeued) {
-    console.log(`[Worker] Lead ${leadId}: ${dialStatus}, requeued for another attempt`);
+    logger.info({ leadId, dialStatus }, '[Worker] Lead requeued for another attempt');
   } else {
-    console.log(`[Worker] Lead ${leadId} finalized: ${dialStatus} (${durationSec}s)${credits > 0 ? `, ${credits} credit(s) charged` : ''}`);
+    logger.info({ leadId, dialStatus, durationSec, credits }, '[Worker] Lead finalized');
   }
 }
 
@@ -269,7 +281,7 @@ async function dispatchLead(lead) {
   const { targetPort, label } = pickPort(lead.allowed_ports, lead.campaign_id);
   const channelName = `PJSIP/${cleanPhoneNumber}@DinstarTrunk`;
 
-  console.log(`\n[Worker] Dispatching lead ${lead.lead_id} -> ${cleanPhoneNumber} | Port strategy: ${label}`);
+  logger.info({ leadId: lead.lead_id, phone: cleanPhoneNumber, portStrategy: label }, '[Worker] Dispatching lead');
 
   // Workstream 8: a campaign with voice_campaigns.ivr_flow_id set dials into the new
   // ivr-campaign-context (Stasis-driven, interpreted by ivrFlowEngine.js) instead of the plain
@@ -303,13 +315,13 @@ async function dispatchLead(lead) {
   try {
     ack = await ackPromise;
   } catch (err) {
-    console.error(`[Worker] AMI rejected dispatch for lead ${lead.lead_id}: ${err.message}`);
+    logger.error({ leadId: lead.lead_id, err }, '[Worker] AMI rejected dispatch');
     await finalizeLead(lead.lead_id, lead.campaign_id, 'failed', 0, lead.tenant_id);
     return;
   }
 
   if (ack.Response !== 'Success') {
-    console.error(`[Worker] Asterisk rejected Originate for lead ${lead.lead_id}: ${ack.Message}`);
+    logger.error({ leadId: lead.lead_id, message: ack.Message }, '[Worker] Asterisk rejected Originate');
     await finalizeLead(lead.lead_id, lead.campaign_id, 'failed', 0, lead.tenant_id);
     return;
   }
@@ -321,7 +333,7 @@ async function dispatchLead(lead) {
   );
 
   if (!originateResponse) {
-    console.warn(`[Worker] Lead ${lead.lead_id}: no OriginateResponse within ${ORIGINATE_RESPONSE_TIMEOUT_MS}ms - treating as failed and freeing the slot`);
+    logger.warn({ leadId: lead.lead_id, timeoutMs: ORIGINATE_RESPONSE_TIMEOUT_MS }, '[Worker] No OriginateResponse within timeout - treating as failed and freeing the slot');
     // 0, not elapsed wait time - the call never connected, so there's no real duration to show.
     await finalizeLead(lead.lead_id, lead.campaign_id, 'failed', 0, lead.tenant_id);
     return;
@@ -335,11 +347,11 @@ async function dispatchLead(lead) {
     // instead of burning the lead as permanently failed just because two leads happened to
     // race for the gateway's one actually-available line.
     if (status === 'failed' && String(originateResponse.Reason) === '0' && lead.attempts < MAX_DIAL_ATTEMPTS) {
-      console.log(`[Worker] Lead ${lead.lead_id}: gateway had no free line (reason=0) - requeueing (attempt ${lead.attempts}/${MAX_DIAL_ATTEMPTS})`);
+      logger.info({ leadId: lead.lead_id, attempts: lead.attempts, maxAttempts: MAX_DIAL_ATTEMPTS }, '[Worker] Gateway had no free line (reason=0) - requeueing');
       await requeueLead(lead.lead_id);
       return;
     }
-    console.log(`[Worker] Lead ${lead.lead_id}: call did not connect (${status}, reason=${originateResponse.Reason})`);
+    logger.info({ leadId: lead.lead_id, status, reason: originateResponse.Reason }, '[Worker] Call did not connect');
     // 0, not elapsed wait time - same reasoning as the no-OriginateResponse branch above.
     await finalizeLead(lead.lead_id, lead.campaign_id, status, 0, lead.tenant_id);
     return;
@@ -367,7 +379,7 @@ async function dispatchLead(lead) {
     ]);
 
     if (raceResult.kind === 'transfer' && raceResult.evt) {
-      console.log(`[Worker] Lead ${lead.lead_id}: transferred to a live agent - extending hold to ${MAX_AGENT_CALL_DURATION_MS}ms`);
+      logger.info({ leadId: lead.lead_id, extendedHoldMs: MAX_AGENT_CALL_DURATION_MS }, '[Worker] Lead transferred to a live agent - extending hold');
       hangupEvent = await asteriskService.waitForEvent('Hangup', (evt) => evt.Uniqueid === uniqueid, MAX_AGENT_CALL_DURATION_MS);
     } else {
       hangupEvent = raceResult.evt;
@@ -375,14 +387,24 @@ async function dispatchLead(lead) {
   }
 
   if (!hangupEvent) {
-    console.warn(`[Worker] Lead ${lead.lead_id}: answered but no Hangup event within the cap - freeing the slot anyway`);
+    logger.warn({ leadId: lead.lead_id }, '[Worker] Answered but no Hangup event within the cap - freeing the slot anyway');
   }
 
   const durationSec = Math.round((Date.now() - answeredAt) / 1000);
   await finalizeLead(lead.lead_id, lead.campaign_id, 'answered', durationSec, lead.tenant_id);
 }
 
+// Read by /health (server.js) so a stalled worker loop (stuck in an unhandled await, or the
+// process wedged some other way) shows up as a stale timestamp instead of silently vanishing -
+// the AMI/Postgres/Redis booleans alone don't catch that failure mode.
+let lastTickAt = null;
+export function getLastTickAt() {
+  return lastTickAt;
+}
+
 async function tick() {
+  lastTickAt = new Date();
+
   if (!asteriskService.isConnected) {
     return; // AMI connects during server startup; skip until it's up rather than burning leads
   }
@@ -399,7 +421,8 @@ async function tick() {
     // Fire-and-forget: dispatchLead tracks the call to completion asynchronously via AMI
     // events and does not block this loop, so free slots can keep filling up.
     dispatchLead(lead).catch((err) => {
-      console.error(`[Worker] Unhandled error dispatching lead ${lead.lead_id}:`, err.message || err);
+      logger.error({ leadId: lead.lead_id, err }, '[Worker] Unhandled error dispatching lead');
+      captureException(err, { leadId: lead.lead_id, campaignId: lead.campaign_id });
     });
 
     freeSlots--;
@@ -410,14 +433,15 @@ async function tick() {
 }
 
 async function startWorkerLoop() {
-  console.log('[Worker] Event-driven campaign dialer started.');
-  console.log(`[Worker] Asterisk AMI target: ${process.env.ASTERISK_AMI_HOST || '(default)'}:${process.env.ASTERISK_AMI_PORT || 5038}`);
+  logger.info('[Worker] Event-driven campaign dialer started.');
+  logger.info({ host: process.env.ASTERISK_AMI_HOST || '(default)', port: process.env.ASTERISK_AMI_PORT || 5038 }, '[Worker] Asterisk AMI target');
 
   while (true) {
     try {
       await tick();
     } catch (error) {
-      console.error('[Worker] Error in dialer tick:', error.message || error);
+      logger.error({ err: error }, '[Worker] Error in dialer tick');
+      captureException(error);
     }
     await sleep(POLL_INTERVAL_MS);
   }
@@ -462,22 +486,22 @@ async function startWorkerWithRetry() {
         // so this must keep retrying rather than give up for the rest of this process's
         // lifetime (previously a `return` here meant a process that lost the race once at
         // boot would never dial another lead again, even after the lock became free).
-        console.warn(`[Worker] Another process already holds the campaign dialer lock - retrying in ${LOCK_RETRY_DELAY_MS}ms`);
+        logger.warn({ retryInMs: LOCK_RETRY_DELAY_MS }, '[Worker] Another process already holds the campaign dialer lock - retrying');
         await sleep(LOCK_RETRY_DELAY_MS);
         continue;
       }
-      console.log('[Worker] Acquired singleton dialer lock.');
+      logger.info('[Worker] Acquired singleton dialer lock.');
       await startWorkerLoop();
       return; // startWorkerLoop() only returns on an unexpected exit, not on normal ticks
     } catch (err) {
-      console.error(`[Worker] Failed to acquire dialer lock (${err.message || err}) - retrying in ${LOCK_RETRY_DELAY_MS}ms`);
+      logger.error({ err, retryInMs: LOCK_RETRY_DELAY_MS }, '[Worker] Failed to acquire dialer lock - retrying');
       await sleep(LOCK_RETRY_DELAY_MS);
     }
   }
 }
 
 if (global.isWorkerRunning) {
-  console.log('[Worker] Duplicate worker start prevented (already running in this process).');
+  logger.info('[Worker] Duplicate worker start prevented (already running in this process).');
 } else {
   global.isWorkerRunning = true;
   startWorkerWithRetry();

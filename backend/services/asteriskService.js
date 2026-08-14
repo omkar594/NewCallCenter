@@ -1,6 +1,7 @@
 import net from 'net';
 import EventEmitter from 'events';
 import dotenv from 'dotenv';
+import logger from '../utils/logger.js';
 
 dotenv.config();
 
@@ -20,6 +21,15 @@ class AsteriskService extends EventEmitter {
     this.buffer = '';
     this.actionCallbacks = new Map();
     this.actionIdCounter = 1;
+    // Exponential backoff for AMI reconnects (5s -> 10s -> 20s ... capped at 60s), reset to the
+    // base delay on every successful login. A flat 5s-forever retry hammers a genuinely-down
+    // Asterisk box or network path just as hard on minute 30 as on second 5.
+    this.baseReconnectDelayMs = 5000;
+    this.maxReconnectDelayMs = 60000;
+    this.reconnectDelayMs = this.baseReconnectDelayMs;
+    // Tracks every in-flight sendAction/waitForEvent so a socket drop can fail them fast instead
+    // of leaving callers hanging until their own long timeout (up to MAX_CALL_DURATION_MS = 5min).
+    this.pendingWaiters = new Set();
     // Mock mode must be an explicit opt-in for local dev without a real Asterisk box.
     // It used to auto-enable on ANY connection/auth failure, which silently hid real
     // outages behind fake "Success" responses in production - see plan Workstream 2.
@@ -31,40 +41,41 @@ class AsteriskService extends EventEmitter {
    */
   async connect() {
     if (this.useMock) {
-      console.warn('[AsteriskService] AMI_MOCK_MODE=true - using the AMI simulator, not a real Asterisk connection.');
+      logger.warn('[AsteriskService] AMI_MOCK_MODE=true - using the AMI simulator, not a real Asterisk connection.');
       this.isConnected = true;
       this.emit('ami_ready');
       return true;
     }
 
     return new Promise((resolve) => {
-      console.log(`Attempting connection to Asterisk AMI at ${this.host}:${this.port}...`);
+      logger.info({ host: this.host, port: this.port }, 'Attempting connection to Asterisk AMI');
 
       this.socket = net.connect({ host: this.host, port: this.port });
       this.socket.setKeepAlive(true);
 
       this.socket.on('connect', async () => {
-        console.log('Connected to Asterisk AMI socket. Performing Login...');
+        logger.info('Connected to Asterisk AMI socket. Performing Login...');
         try {
           const response = await this.sendAction('Login', {
             Username: this.username,
             Secret: this.secret
           });
           if (response.Response === 'Success') {
-            console.log('Successfully authenticated with Asterisk AMI');
+            logger.info('Successfully authenticated with Asterisk AMI');
             this.isConnected = true;
+            this.reconnectDelayMs = this.baseReconnectDelayMs;
             // Lets queueMembershipService resync campaign_agents queue membership against
             // Postgres on every (re)connect, including after Asterisk restarts where any
             // AMI-only queue state would otherwise be lost - see Workstream 7.
             this.emit('ami_ready');
             resolve(true);
           } else {
-            console.error('Asterisk AMI Authentication failed:', response.Message);
+            logger.error({ message: response.Message }, 'Asterisk AMI authentication failed');
             this.isConnected = false;
             resolve(false);
           }
         } catch (err) {
-          console.error('Asterisk AMI login command failed:', err.message);
+          logger.error({ err }, 'Asterisk AMI login command failed');
           this.isConnected = false;
           resolve(false);
         }
@@ -76,17 +87,35 @@ class AsteriskService extends EventEmitter {
       });
 
       this.socket.on('error', (err) => {
-        console.error(`Asterisk AMI connection failed: ${err.message}.`);
+        logger.error({ err }, 'Asterisk AMI connection failed');
         this.isConnected = false;
         resolve(false);
       });
 
       this.socket.on('close', () => {
-        console.warn('Asterisk AMI socket connection closed. Reconnecting in 5s...');
+        const delay = this.reconnectDelayMs;
+        logger.warn({ reconnectInMs: delay }, 'Asterisk AMI socket connection closed');
         this.isConnected = false;
-        setTimeout(() => this.connect(), 5000);
+        this._failAllPending('AMI disconnected');
+        this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, this.maxReconnectDelayMs);
+        setTimeout(() => this.connect(), delay);
       });
     });
+  }
+
+  /**
+   * Fails every in-flight sendAction callback and waitForEvent listener immediately, instead of
+   * leaving them to hang until their own timeout - called the moment the AMI socket drops.
+   */
+  _failAllPending(reason) {
+    for (const { reject } of this.actionCallbacks.values()) {
+      reject(new Error(reason));
+    }
+    this.actionCallbacks.clear();
+
+    for (const cleanup of Array.from(this.pendingWaiters)) {
+      cleanup();
+    }
   }
 
   /**
@@ -196,20 +225,26 @@ class AsteriskService extends EventEmitter {
    */
   waitForEvent(eventName, predicate, timeoutMs) {
     return new Promise((resolve) => {
-      const timer = setTimeout(() => {
+      const cleanup = () => {
+        clearTimeout(timer);
         this.removeListener(eventName, handler);
+        this.pendingWaiters.delete(cleanup);
         resolve(null);
-      }, timeoutMs);
+      };
+
+      const timer = setTimeout(cleanup, timeoutMs);
 
       const handler = (evt) => {
         if (predicate(evt)) {
           clearTimeout(timer);
           this.removeListener(eventName, handler);
+          this.pendingWaiters.delete(cleanup);
           resolve(evt);
         }
       };
 
       this.on(eventName, handler);
+      this.pendingWaiters.add(cleanup);
     });
   }
 
@@ -280,7 +315,7 @@ class AsteriskService extends EventEmitter {
    * Internal Simulator for AMI actions when hardware is missing.
    */
   _simulateAction(action, payload) {
-    console.log(`[AMI Simulator] Received Action: ${action}`, payload);
+    logger.debug({ action, payload }, '[AMI Simulator] Received Action');
 
     // Simulate events async to verify backend flow
     if (action === 'Originate') {

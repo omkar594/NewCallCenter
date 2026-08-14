@@ -2,6 +2,7 @@ import axios from 'axios';
 import WebSocket from 'ws';
 import EventEmitter from 'events';
 import dotenv from 'dotenv';
+import logger from '../utils/logger.js';
 
 dotenv.config();
 
@@ -33,7 +34,7 @@ class AriService extends EventEmitter {
 
   connect() {
     if (this.useMock) {
-      console.warn('[AriService] ARI_MOCK_MODE=true - REST calls are no-ops, no real Asterisk connection.');
+      logger.warn('[AriService] ARI_MOCK_MODE=true - REST calls are no-ops, no real Asterisk connection.');
       this.isConnected = true;
       this.emit('ari_ready');
       return Promise.resolve(true);
@@ -44,11 +45,11 @@ class AriService extends EventEmitter {
         `?api_key=${encodeURIComponent(this.username)}:${encodeURIComponent(this.password)}` +
         `&app=${encodeURIComponent(this.appName)}&subscribeAll=true`;
 
-      console.log(`[AriService] Connecting to Asterisk ARI events at ${this.baseUrl}/ari/events (app=${this.appName})...`);
+      logger.info({ baseUrl: this.baseUrl, app: this.appName }, '[AriService] Connecting to Asterisk ARI events');
       this.ws = new WebSocket(wsUrl);
 
       this.ws.on('open', () => {
-        console.log('[AriService] ARI WebSocket connected.');
+        logger.info('[AriService] ARI WebSocket connected.');
         this.isConnected = true;
         this.emit('ari_ready');
         resolve(true);
@@ -59,7 +60,7 @@ class AriService extends EventEmitter {
         try {
           evt = JSON.parse(raw.toString());
         } catch (err) {
-          console.error('[AriService] Failed to parse ARI event:', err.message);
+          logger.error({ err }, '[AriService] Failed to parse ARI event');
           return;
         }
         this.emit('ari_event', evt);
@@ -67,13 +68,13 @@ class AriService extends EventEmitter {
       });
 
       this.ws.on('error', (err) => {
-        console.error(`[AriService] ARI WebSocket error: ${err.message}.`);
+        logger.error({ err }, '[AriService] ARI WebSocket error');
         this.isConnected = false;
         resolve(false);
       });
 
       this.ws.on('close', () => {
-        console.warn('[AriService] ARI WebSocket closed. Reconnecting in 5s...');
+        logger.warn('[AriService] ARI WebSocket closed. Reconnecting in 5s...');
         this.isConnected = false;
         setTimeout(() => this.connect(), 5000);
       });
@@ -86,7 +87,7 @@ class AriService extends EventEmitter {
    */
   async _rest(method, path, { params, data } = {}) {
     if (this.useMock) {
-      console.log(`[AriService Mock] ${method} ${path}`, params || data || '');
+      logger.debug({ method, path, params: params || data || null }, '[AriService Mock] REST call');
       return { id: `mock-${Date.now()}` };
     }
     const res = await axios({

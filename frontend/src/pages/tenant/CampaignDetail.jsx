@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, AlertCircle, RefreshCw, Hash } from 'lucide-react';
-import { apiGet } from '../../api/client.js';
+import { ArrowLeft, AlertCircle, RefreshCw, Hash, Download } from 'lucide-react';
+import { apiGet, apiDownload } from '../../api/client.js';
 import DataTable from '../../components/DataTable.jsx';
 import StatusBadge from '../../components/StatusBadge.jsx';
 
 const POLL_MS = 4000;
 
 export default function CampaignDetail() {
-  const { campaignId } = useParams();
+  // tenantId is only present when this page is reached via the super_admin route
+  // (/admin/tenants/:tenantId/campaigns/:campaignId) - undefined for the tenant's own route,
+  // where resolveTenantId(req) on the backend already scopes correctly without it.
+  const { campaignId, tenantId } = useParams();
   const [report, setReport] = useState(null);
   const [error, setError] = useState('');
+  const [downloading, setDownloading] = useState(false);
   const timerRef = useRef(null);
 
   useEffect(() => {
@@ -18,7 +22,8 @@ export default function CampaignDetail() {
 
     const load = async () => {
       try {
-        const data = await apiGet(`/api/campaigns/${campaignId}`);
+        const query = tenantId ? `?tenantId=${tenantId}` : '';
+        const data = await apiGet(`/api/campaigns/${campaignId}${query}`);
         if (cancelled) return;
         setReport(data);
         const stillWorking = data.campaign.status === 'preparing' || data.metrics.pending > 0 || data.metrics.processing > 0;
@@ -35,7 +40,7 @@ export default function CampaignDetail() {
       cancelled = true;
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [campaignId]);
+  }, [campaignId, tenantId]);
 
   if (error) {
     return (
@@ -49,10 +54,26 @@ export default function CampaignDetail() {
   const { campaign, metrics, leads } = report;
   const isLive = campaign.status === 'preparing' || metrics.pending > 0 || metrics.processing > 0;
 
+  const handleDownloadCsv = async () => {
+    setDownloading(true);
+    try {
+      const query = tenantId ? `?tenantId=${tenantId}` : '';
+      const safeName = campaign.name.replace(/[^a-z0-9_-]+/gi, '_').slice(0, 60);
+      await apiDownload(`/api/campaigns/${campaignId}/export${query}`, `campaign_${safeName}.csv`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <Link to="/app/campaigns" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700">
-        <ArrowLeft className="w-4 h-4" /> All campaigns
+      <Link
+        to={tenantId ? `/admin/tenants/${tenantId}` : '/app/campaigns'}
+        className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700"
+      >
+        <ArrowLeft className="w-4 h-4" /> {tenantId ? 'Back to tenant' : 'All campaigns'}
       </Link>
 
       <div className="flex items-center justify-between">
@@ -67,6 +88,14 @@ export default function CampaignDetail() {
             )}
           </div>
         </div>
+        <button
+          type="button"
+          onClick={handleDownloadCsv}
+          disabled={downloading}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-md px-3 py-1.5 hover:bg-slate-50 disabled:opacity-50"
+        >
+          <Download className="w-4 h-4" /> {downloading ? 'Downloading...' : 'Download CSV'}
+        </button>
       </div>
 
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">

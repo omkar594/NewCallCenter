@@ -238,6 +238,7 @@ CREATE TABLE campaign_leads (
     dial_status VARCHAR(50) DEFAULT 'pending',
     call_duration INTEGER DEFAULT 0,
     attempts INTEGER DEFAULT 0,
+    connect_attempts INTEGER NOT NULL DEFAULT 0, -- genuine busy/no-answer/failed outcomes only, decoupled from gateway-busy requeues
     amd_status VARCHAR(20), -- Workstream 7: HUMAN/MACHINE/NOTSURE from the dialplan's AMD()
     dtmf_selected VARCHAR(20), -- Workstream 7: which DTMF menu option the caller picked, if any
     dtmf_label VARCHAR(100), -- human-readable snapshot of that branch's label at press-time

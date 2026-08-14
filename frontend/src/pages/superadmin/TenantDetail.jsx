@@ -315,7 +315,15 @@ export default function TenantDetail() {
           rows={campaigns}
           emptyMessage="This tenant hasn't run any campaigns yet."
           columns={[
-            { key: 'name', label: 'Name' },
+            {
+              key: 'name',
+              label: 'Name',
+              render: (c) => (
+                <Link to={`/admin/tenants/${tenantId}/campaigns/${c.id}`} className="text-slate-900 font-medium hover:text-brand-600">
+                  {c.name}
+                </Link>
+              )
+            },
             { key: 'status', label: 'Status', render: (c) => <StatusBadge status={c.status} /> },
             { key: 'total_leads', label: 'Leads' },
             { key: 'processed_leads', label: 'Processed' },

@@ -1,3 +1,6 @@
+// Imported first so it's watching before anything else can throw - inert/no-op until
+// SENTRY_DSN is set (see utils/sentry.js).
+import { captureException } from './utils/sentry.js';
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
@@ -5,6 +8,7 @@ import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
+import logger from './utils/logger.js';
 
 // Import configs & services
 import pool from './config/database.js';
@@ -25,7 +29,7 @@ import analyticsRoutes from './routes/analytics.js';
 import ivrRoutes from './routes/ivr.js';
 
 // Start Outbound Campaign Queue Worker
-import './bulkCampaignWorker.js';
+import { getLastTickAt } from './bulkCampaignWorker.js';
 // Start Dinstar gateway telemetry poller (previously never imported, so gateway_port_telemetry
 // never populated in the deployed process - see plan Workstream 4).
 import './dinstarPoller.js';
@@ -37,6 +41,20 @@ import './services/campaignTelemetryListener.js';
 import './services/ivrFlowEngine.js';
 
 dotenv.config();
+
+// Surfaces crashes that would otherwise only show up as a Render restart with no diagnosis -
+// reported to Sentry (no-op if SENTRY_DSN unset, see utils/sentry.js) and logged either way.
+// Deliberately does not process.exit(): an unhandled rejection alone shouldn't kill a process
+// that's mid-dialing hundreds of live calls; a genuinely fatal uncaughtException will usually
+// bring the process down on its own right after this handler runs.
+process.on('uncaughtException', (err) => {
+  logger.error({ err }, 'Uncaught exception');
+  captureException(err);
+});
+process.on('unhandledRejection', (reason) => {
+  logger.error({ err: reason }, 'Unhandled promise rejection');
+  captureException(reason instanceof Error ? reason : new Error(String(reason)));
+});
 
 const app = express();
 const server = http.createServer(app);
@@ -319,6 +337,11 @@ async function initSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_credit_transactions_tenant ON credit_transactions(tenant_id, created_at DESC);
 
+      -- Counts only genuine busy/no-answer/failed OUTCOMES (never the instant gateway-capacity
+      -- "no line free right now" requeue, which reuses campaign_leads.attempts for a completely
+      -- different purpose) - see bulkCampaignWorker.js's finalizeLead. Keeps a campaign owner's
+      -- configured retry budget from being silently eaten by gateway-busy requeues.
+      ALTER TABLE campaign_leads ADD COLUMN IF NOT EXISTS connect_attempts INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE campaign_leads ADD COLUMN IF NOT EXISTS amd_status VARCHAR(20);
       ALTER TABLE campaign_leads ADD COLUMN IF NOT EXISTS dtmf_selected VARCHAR(20);
       -- Snapshot of the matched branch's label at the moment the digit was pressed - NOT a live
@@ -555,12 +578,24 @@ app.get('/health', async (req, res) => {
   // Previously `pool ? 'connected' : ...` and `redis ? 'connected' : ...` only checked that the
   // client objects existed (always true), not that the connections actually work - so this
   // endpoint could report "connected" while Postgres/Redis were both unreachable.
-  const [postgresOk, redisOk] = await Promise.all([
+  const [postgresOk, redisOk, leadCounts] = await Promise.all([
     pool.query('SELECT 1').then(() => true).catch(() => false),
     // redis is a Proxy that falls back to a mock lacking .ping() when disconnected, which
     // returns null (not a promise) rather than rejecting - Promise.resolve() normalizes that.
-    Promise.resolve(redis.ping ? redis.ping() : null).then((r) => r === 'PONG').catch(() => false)
+    Promise.resolve(redis.ping ? redis.ping() : null).then((r) => r === 'PONG').catch(() => false),
+    pool.query(`
+      SELECT
+        COUNT(CASE WHEN dial_status = 'pending' THEN 1 END)::int AS pending,
+        COUNT(CASE WHEN dial_status = 'processing' THEN 1 END)::int AS processing
+      FROM campaign_leads
+    `).then((r) => r.rows[0]).catch(() => ({ pending: null, processing: null }))
   ]);
+
+  const lastTickAt = getLastTickAt();
+  // The dialer loop polls every POLL_INTERVAL_MS (2s) - a gap past 30s means it's stuck, not
+  // just between ticks. null (never ticked, e.g. fresh boot with AMI still connecting) is
+  // reported separately from a genuinely stale timestamp.
+  const workerStale = lastTickAt ? (Date.now() - lastTickAt.getTime()) > 30000 : null;
 
   res.json({
     status: 'healthy',
@@ -569,6 +604,14 @@ app.get('/health', async (req, res) => {
       postgres: postgresOk ? 'connected' : 'disconnected',
       redis: redisOk ? 'connected' : 'disconnected',
       asterisk_ami: asteriskService.isConnected ? 'connected' : 'disconnected'
+    },
+    worker: {
+      lastTickAt,
+      stale: workerStale
+    },
+    leadQueue: {
+      pending: leadCounts.pending,
+      processing: leadCounts.processing
     }
   });
 });

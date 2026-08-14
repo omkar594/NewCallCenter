@@ -78,3 +78,37 @@ export const apiGet = (path) => request(path, { method: 'GET' });
 export const apiPost = (path, body) => request(path, { method: 'POST', body });
 export const apiPut = (path, body) => request(path, { method: 'PUT', body });
 export const apiDelete = (path) => request(path, { method: 'DELETE' });
+
+// A plain `<a href>` can't carry the Bearer auth header, so file downloads that require auth
+// (like CSV exports) need to fetch the blob themselves and trigger the save via a temporary
+// object URL instead.
+export async function apiDownload(path, filename) {
+  const token = getToken();
+  const finalHeaders = {};
+  if (token) finalHeaders.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${resolveApiBaseUrl()}${path}`, { headers: finalHeaders });
+
+  if (res.status === 401) {
+    setStoredAuth(null);
+    if (window.location.pathname !== '/login') {
+      window.location.href = '/login';
+    }
+    throw new ApiError('Session expired - please log in again', 401, null);
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    const message = (data && typeof data === 'object' && data.error) || `Download failed (${res.status})`;
+    throw new ApiError(message, res.status, data);
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}

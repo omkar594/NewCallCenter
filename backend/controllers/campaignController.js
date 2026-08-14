@@ -166,6 +166,20 @@ export async function handleOptOutWebhook(req, res) {
 export async function getCampaigns(req, res) {
   const isSuperAdmin = req.user?.role === 'super_admin';
   const tenantId = (isSuperAdmin && req.query.tenantId) ? req.query.tenantId : resolveTenantId(req);
+  // Optional ?from=&to= (YYYY-MM-DD) date-range filter so a client can pull a specific window of
+  // past campaigns - both absent (today's default) means no filter at all, identical to before
+  // this param existed. `to` is treated as end-of-day so a same-day range still matches.
+  const { from, to } = req.query;
+  const params = [tenantId];
+  let dateFilter = '';
+  if (from) {
+    params.push(from);
+    dateFilter += ` AND vc.created_at >= $${params.length}`;
+  }
+  if (to) {
+    params.push(to);
+    dateFilter += ` AND vc.created_at < ($${params.length}::date + INTERVAL '1 day')`;
+  }
   try {
     const result = await executeTenantQuery(null, `
       SELECT
@@ -185,10 +199,10 @@ export async function getCampaigns(req, res) {
         COUNT(CASE WHEN cl.dial_status = 'pending' THEN 1 END) AS pending_count
       FROM voice_campaigns vc
       LEFT JOIN campaign_leads cl ON vc.id = cl.campaign_id
-      WHERE vc.tenant_id = $1
+      WHERE vc.tenant_id = $1${dateFilter}
       GROUP BY vc.id
       ORDER BY vc.created_at DESC
-    `, [tenantId]);
+    `, params);
     res.json(result.rows);
   } catch (error) {
     console.error('[CampaignController] getCampaigns failed:', error);
@@ -219,16 +233,21 @@ export async function getLiveCalls(req, res) {
   }
 }
 
-// 2. Get detailed campaign status report (Connected vs Failed breakdown)
+// 2. Get detailed campaign status report (Connected vs Failed breakdown). super_admin may pass
+// ?tenantId= to drill into one client's campaign - same override pattern as getCampaigns/getLiveCalls
+// above. Previously missing here, which 404'd every campaign for super_admin (it always resolved
+// to its own default tenant, never matching a real client's campaign).
 export async function getCampaignReport(req, res) {
   const { id } = req.params;
+  const isSuperAdmin = req.user?.role === 'super_admin';
+  const tenantId = (isSuperAdmin && req.query.tenantId) ? req.query.tenantId : resolveTenantId(req);
   try {
     // tenant_id filter here means a wrong-tenant id 404s exactly like a nonexistent one -
     // matches ivrController.js's getFlow(), no separate "forbidden" leak distinguishing
     // "doesn't exist" from "exists but isn't yours".
     const campaignResult = await executeTenantQuery(null, `
       SELECT * FROM voice_campaigns WHERE id = $1 AND tenant_id = $2
-    `, [id, resolveTenantId(req)]);
+    `, [id, tenantId]);
 
     if (campaignResult.rows.length === 0) {
       return res.status(404).json({ error: 'Campaign not found' });
@@ -262,6 +281,52 @@ export async function getCampaignReport(req, res) {
   } catch (error) {
     console.error('[CampaignController] getCampaignReport failed:', error);
     res.status(500).json({ error: 'Failed to fetch campaign report' });
+  }
+}
+
+// A field that contains a comma, quote, or newline must be quoted, with any internal quotes
+// doubled - the standard CSV escaping rule (RFC 4180). Everything else passes through as-is.
+function csvField(value) {
+  const s = value === null || value === undefined ? '' : String(value);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+// 2b. Download a campaign's leads report as CSV - same tenant-scoping (and super_admin
+// ?tenantId= override) as getCampaignReport above, since this is just an alternate rendering of
+// the exact same data. First CSV-download endpoint in this codebase.
+export async function exportCampaignLeadsCsv(req, res) {
+  const { id } = req.params;
+  const isSuperAdmin = req.user?.role === 'super_admin';
+  const tenantId = (isSuperAdmin && req.query.tenantId) ? req.query.tenantId : resolveTenantId(req);
+  try {
+    const campaignResult = await executeTenantQuery(null, `
+      SELECT name FROM voice_campaigns WHERE id = $1 AND tenant_id = $2
+    `, [id, tenantId]);
+    if (campaignResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+
+    const leadsResult = await executeTenantQuery(null, `
+      SELECT phone_number, customer_name, dial_status, attempts, call_duration, dtmf_selected, dtmf_label, updated_at
+      FROM campaign_leads
+      WHERE campaign_id = $1
+      ORDER BY updated_at DESC
+    `, [id]);
+
+    const header = ['Phone', 'Name', 'Status', 'Attempts', 'Duration (s)', 'DTMF Pressed', 'DTMF Label', 'Updated'];
+    const rows = leadsResult.rows.map((l) => [
+      l.phone_number, l.customer_name, l.dial_status, l.attempts, l.call_duration,
+      l.dtmf_selected, l.dtmf_label, new Date(l.updated_at).toISOString()
+    ]);
+    const csv = [header, ...rows].map((row) => row.map(csvField).join(',')).join('\r\n');
+
+    const safeName = campaignResult.rows[0].name.replace(/[^a-z0-9_-]+/gi, '_').slice(0, 60);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="campaign_${safeName}_${id.slice(0, 8)}.csv"`);
+    res.send(csv);
+  } catch (error) {
+    console.error('[CampaignController] exportCampaignLeadsCsv failed:', error);
+    res.status(500).json({ error: 'Failed to export campaign report' });
   }
 }
 

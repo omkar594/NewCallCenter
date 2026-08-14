@@ -3,7 +3,7 @@ import multer from 'multer';
 import os from 'os';
 import fs from 'fs';
 import path from 'path';
-import { getCampaigns, getLiveCalls, getCampaignReport, createBroadcastCampaign, handleCampaignCallback, handleOptOutWebhook } from '../controllers/campaignController.js';
+import { getCampaigns, getLiveCalls, getCampaignReport, exportCampaignLeadsCsv, createBroadcastCampaign, handleCampaignCallback, handleOptOutWebhook } from '../controllers/campaignController.js';
 import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 
 const AUDIO_FIELDS = new Set(['broadcastAudio', 'audioFile', 'audio', 'file']);
@@ -84,5 +84,9 @@ router.get('/optout', handleOptOutWebhook);
 
 // 4. Get campaign detailed status & call progress
 router.get('/:id', requireCampaignAccess, getCampaignReport);
+
+// 4b. Download the same report as CSV - a two-segment path, so it's unambiguous against '/:id'
+// regardless of registration order (Express only matches '/:id' against a single segment).
+router.get('/:id/export', requireCampaignAccess, exportCampaignLeadsCsv);
 
 export default router;

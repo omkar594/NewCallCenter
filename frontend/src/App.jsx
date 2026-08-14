@@ -36,6 +36,10 @@ export default function App() {
           <Route path="/admin" element={<SuperAdminDashboard />} />
           <Route path="/admin/onboard" element={<OnboardClient />} />
           <Route path="/admin/tenants/:tenantId" element={<TenantDetail />} />
+          {/* Reuses the tenant's own CampaignDetail component - it reads tenantId from the URL
+              (see CampaignDetail.jsx) and appends it as ?tenantId= on its API calls, which
+              getCampaignReport now supports for super_admin. */}
+          <Route path="/admin/tenants/:tenantId/campaigns/:campaignId" element={<CampaignDetail />} />
           <Route path="/admin/ports" element={<GatewayPorts />} />
           <Route path="/admin/logs" element={<SuperAdminCallLogs />} />
         </Route>
