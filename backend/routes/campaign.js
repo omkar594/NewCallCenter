@@ -3,7 +3,7 @@ import multer from 'multer';
 import os from 'os';
 import fs from 'fs';
 import path from 'path';
-import { getCampaigns, getLiveCalls, getCampaignReport, exportCampaignLeadsCsv, createBroadcastCampaign, handleCampaignCallback, handleOptOutWebhook } from '../controllers/campaignController.js';
+import { getCampaigns, getLiveCalls, getCampaignReport, exportCampaignLeadsCsv, pauseCampaign, resumeCampaign, createBroadcastCampaign, handleCampaignCallback, handleOptOutWebhook } from '../controllers/campaignController.js';
 import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 
 const AUDIO_FIELDS = new Set(['broadcastAudio', 'audioFile', 'audio', 'file']);
@@ -88,5 +88,9 @@ router.get('/:id', requireCampaignAccess, getCampaignReport);
 // 4b. Download the same report as CSV - a two-segment path, so it's unambiguous against '/:id'
 // regardless of registration order (Express only matches '/:id' against a single segment).
 router.get('/:id/export', requireCampaignAccess, exportCampaignLeadsCsv);
+
+// 4c/4d. Pause/resume a campaign mid-run - same two-segment-path reasoning as /:id/export above.
+router.post('/:id/pause', requireCampaignAccess, pauseCampaign);
+router.post('/:id/resume', requireCampaignAccess, resumeCampaign);
 
 export default router;

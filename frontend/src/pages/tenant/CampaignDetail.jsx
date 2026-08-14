@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, AlertCircle, RefreshCw, Hash, Download } from 'lucide-react';
-import { apiGet, apiDownload } from '../../api/client.js';
+import { ArrowLeft, AlertCircle, RefreshCw, Hash, Download, Pause, Play } from 'lucide-react';
+import { apiGet, apiPost, apiDownload } from '../../api/client.js';
 import DataTable from '../../components/DataTable.jsx';
 import StatusBadge from '../../components/StatusBadge.jsx';
 
@@ -15,6 +15,10 @@ export default function CampaignDetail() {
   const [report, setReport] = useState(null);
   const [error, setError] = useState('');
   const [downloading, setDownloading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  // Bumped after a pause/resume action to force an immediate re-fetch instead of waiting up to
+  // POLL_MS for the next scheduled poll to pick up the status change.
+  const [reloadTick, setReloadTick] = useState(0);
   const timerRef = useRef(null);
 
   useEffect(() => {
@@ -40,7 +44,7 @@ export default function CampaignDetail() {
       cancelled = true;
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [campaignId, tenantId]);
+  }, [campaignId, tenantId, reloadTick]);
 
   if (error) {
     return (
@@ -67,6 +71,20 @@ export default function CampaignDetail() {
     }
   };
 
+  const handlePauseResume = async (action) => {
+    setActionLoading(true);
+    setError('');
+    try {
+      const query = tenantId ? `?tenantId=${tenantId}` : '';
+      await apiPost(`/api/campaigns/${campaignId}/${action}${query}`);
+      setReloadTick((t) => t + 1);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Link
@@ -81,21 +99,43 @@ export default function CampaignDetail() {
           <h1 className="text-xl font-semibold text-slate-900">{campaign.name}</h1>
           <div className="flex items-center gap-2 mt-1">
             <StatusBadge status={campaign.status} />
-            {isLive && (
+            {isLive && campaign.status !== 'paused' && (
               <span className="flex items-center gap-1 text-xs text-slate-400">
                 <RefreshCw className="w-3 h-3 animate-spin" /> updating live
               </span>
             )}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleDownloadCsv}
-          disabled={downloading}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-md px-3 py-1.5 hover:bg-slate-50 disabled:opacity-50"
-        >
-          <Download className="w-4 h-4" /> {downloading ? 'Downloading...' : 'Download CSV'}
-        </button>
+        <div className="flex items-center gap-2">
+          {(campaign.status === 'running' || campaign.status === 'pending') && (
+            <button
+              type="button"
+              onClick={() => handlePauseResume('pause')}
+              disabled={actionLoading}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-1.5 hover:bg-amber-100 disabled:opacity-50"
+            >
+              <Pause className="w-4 h-4" /> {actionLoading ? 'Pausing...' : 'Pause'}
+            </button>
+          )}
+          {campaign.status === 'paused' && (
+            <button
+              type="button"
+              onClick={() => handlePauseResume('resume')}
+              disabled={actionLoading}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-1.5 hover:bg-emerald-100 disabled:opacity-50"
+            >
+              <Play className="w-4 h-4" /> {actionLoading ? 'Resuming...' : 'Resume'}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleDownloadCsv}
+            disabled={downloading}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-md px-3 py-1.5 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" /> {downloading ? 'Downloading...' : 'Download CSV'}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
@@ -110,6 +150,12 @@ export default function CampaignDetail() {
       {campaign.status === 'preparing' && (
         <div className="text-sm text-amber-700 bg-amber-50 rounded-md px-3 py-2">
           Pre-synthesizing every prompt for every language this campaign's leads use before dialing starts - this usually takes just a few seconds.
+        </div>
+      )}
+
+      {campaign.status === 'paused' && (
+        <div className="text-sm text-amber-700 bg-amber-50 rounded-md px-3 py-2">
+          Dialing is paused. Calls already in progress will finish normally; no new calls will start until you resume.
         </div>
       )}
 

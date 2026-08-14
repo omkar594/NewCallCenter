@@ -420,6 +420,15 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
                   <option key={n.client_id} value={n.client_id}>{n.client_id} ({n.type})</option>
                 ))}
               </select>
+              {/* Shown to Super Admin/tenant on the campaign report's "DTMF Pressed" column
+                  (CampaignDetail.jsx) instead of the raw matchValue - e.g. "1" reads as
+                  "Sales" once labeled. Optional: falls back to the raw digit if left blank. */}
+              <input
+                value={b.label}
+                onChange={(e) => updateBranch(i, { label: e.target.value })}
+                placeholder="report label (optional)"
+                className="border border-slate-300 rounded-md px-2 py-1 text-sm flex-1"
+              />
               <button onClick={() => removeBranch(i)} className="text-slate-400 hover:text-red-600">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>

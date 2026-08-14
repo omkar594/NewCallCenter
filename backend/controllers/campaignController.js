@@ -330,6 +330,65 @@ export async function exportCampaignLeadsCsv(req, res) {
   }
 }
 
+// 2c. Pause a campaign mid-run. claimNextPendingLead() (bulkCampaignWorker.js) only claims
+// leads whose campaign status is IN ('running', 'pending') - 'paused' simply isn't in that list,
+// so no worker-side change is needed at all. Any lead already 'processing' keeps ringing/playing
+// to its natural completion; only NEW dials stop. Deliberately excludes 'preparing' - pausing
+// mid-TTS-presynthesis isn't a real use case, and prepareCampaignAudio's own completion UPDATE is
+// guarded by `WHERE status = 'preparing'` (see Workstream 9.5), so a 'paused' campaign it doesn't
+// recognize would otherwise risk being silently flipped back to 'running' underneath the pause.
+export async function pauseCampaign(req, res) {
+  const { id } = req.params;
+  const isSuperAdmin = req.user?.role === 'super_admin';
+  const tenantId = (isSuperAdmin && req.query.tenantId) ? req.query.tenantId : resolveTenantId(req);
+  try {
+    const result = await executeTenantQuery(null, `
+      UPDATE voice_campaigns SET status = 'paused', updated_at = NOW()
+      WHERE id = $1 AND tenant_id = $2 AND status IN ('running', 'pending')
+      RETURNING id, status
+    `, [id, tenantId]);
+    if (result.rows.length === 0) {
+      return res.status(409).json({ error: 'Campaign is not in a pausable state (must be running)' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('[CampaignController] pauseCampaign failed:', error);
+    res.status(500).json({ error: 'Failed to pause campaign' });
+  }
+}
+
+// 2d. Resume a paused campaign - flips it back to 'running', which is all claimNextPendingLead()
+// needs to start claiming its still-pending leads again on the worker's next tick (at most
+// POLL_INTERVAL_MS = 2s later).
+export async function resumeCampaign(req, res) {
+  const { id } = req.params;
+  const isSuperAdmin = req.user?.role === 'super_admin';
+  const tenantId = (isSuperAdmin && req.query.tenantId) ? req.query.tenantId : resolveTenantId(req);
+  try {
+    // Same zero-credit guard as campaign creation (createBroadcastCampaign below) - a tenant
+    // that ran out of credit while paused shouldn't be able to resume dialing until topped up.
+    const creditResult = await executeTenantQuery(null,
+      `SELECT credit_balance FROM tenants WHERE id = $1`, [tenantId]
+    );
+    if (creditResult.rows[0]?.credit_balance <= 0) {
+      return res.status(402).json({ error: 'Insufficient credit balance to resume this campaign' });
+    }
+
+    const result = await executeTenantQuery(null, `
+      UPDATE voice_campaigns SET status = 'running', updated_at = NOW()
+      WHERE id = $1 AND tenant_id = $2 AND status = 'paused'
+      RETURNING id, status
+    `, [id, tenantId]);
+    if (result.rows.length === 0) {
+      return res.status(409).json({ error: 'Campaign is not paused' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('[CampaignController] resumeCampaign failed:', error);
+    res.status(500).json({ error: 'Failed to resume campaign' });
+  }
+}
+
 // 3. Initiate Bulk Outbound Voice Broadcast (Supports JSON payloads OR Multipart Form-Data)
 export async function createBroadcastCampaign(req, res) {
   const { name, allowedPorts, phoneNumbers, audioBase64, ivrFlowId, retryCount } = req.body;
