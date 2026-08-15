@@ -34,12 +34,12 @@ export default function Login({ variant = 'client' }) {
       const isAdminAccount = user.role === 'super_admin';
       if (variant === 'admin' && !isAdminAccount) {
         logout();
-        setError('Yeh Admin Portal hai - apna client account /login se access karein.');
+        setError('This is the Admin Portal. Please sign in with your client account at /login instead.');
         return;
       }
       if (variant === 'client' && isAdminAccount) {
         logout();
-        setError('Yeh Client Portal hai - admin account ke liye /admin/login use karein.');
+        setError('This is the Client Portal. Please sign in with your admin account at /admin/login instead.');
         return;
       }
       navigate(homeForRole(user.role), { replace: true });
