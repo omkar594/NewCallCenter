@@ -194,9 +194,18 @@ export async function getTenantOverview(req, res) {
 // broadcast system this app runs) - deliberately NOT the `calls` table getCallLogs above uses,
 // which is a separate, architecturally-unrelated inbound/agent-desk flow. pool.query (not
 // executeTenantQuery) throughout since every query here is intentionally cross-tenant.
+// Below this, a tenant is surfaced in the low-balance alert/campaign-attention widgets - kept in
+// sync by hand with tenant/Dashboard.jsx's own LOW_CREDIT_THRESHOLD (no shared constants module
+// between frontend/backend in this codebase).
+const LOW_CREDIT_THRESHOLD = 20;
+
 export async function getAdminOverview(req, res) {
   try {
-    const [tenantsResult, campaignsResult, outcomeResult, trendResult, topTenantsResult] = await Promise.all([
+    const [
+      tenantsResult, campaignsResult, outcomeResult, trendResult, topTenantsResult,
+      lowBalanceResult, portCapacityResult, liveCallsResult, attentionCampaignsResult,
+      recentDncResult, recentTopupsResult, recentCancelledResult
+    ] = await Promise.all([
       pool.query(`SELECT COUNT(*)::int AS count FROM tenants WHERE status = 'active'`),
       pool.query(`SELECT COUNT(*)::int AS count FROM voice_campaigns`),
       pool.query(`
@@ -207,13 +216,15 @@ export async function getAdminOverview(req, res) {
       // Daily call-volume trend for the line chart - only genuine dialed OUTCOMES (a lead that's
       // still 'pending'/'processing' hasn't been dialed to completion yet, so it's excluded the
       // same way finalizeLead's connect_attempts logic treats those as not-yet-real-attempts).
+      // Fetches a 30-day window once; the frontend's Today/14 days/30 days toggle just slices
+      // this client-side rather than round-tripping for each range.
       pool.query(`
         SELECT DATE(updated_at) AS day,
                COUNT(*) FILTER (WHERE dial_status = 'answered')::int AS answered,
                COUNT(*) FILTER (WHERE dial_status IN ('busy', 'failed', 'no-answer'))::int AS rejected
         FROM campaign_leads
         WHERE dial_status IN ('answered', 'busy', 'failed', 'no-answer')
-          AND updated_at >= NOW() - INTERVAL '14 days'
+          AND updated_at >= NOW() - INTERVAL '30 days'
         GROUP BY DATE(updated_at)
         ORDER BY day
       `),
@@ -226,8 +237,73 @@ export async function getAdminOverview(req, res) {
         GROUP BY t.name
         ORDER BY dialed DESC
         LIMIT 5
+      `),
+      pool.query(`SELECT id, name, credit_balance FROM tenants WHERE status = 'active' AND credit_balance <= $1 ORDER BY credit_balance ASC`, [LOW_CREDIT_THRESHOLD]),
+      // Single physical Dinstar gateway (not a fleet) - "capacity" here means how many of its
+      // allocated ports are currently registered and reachable, per the same telemetry
+      // dinstarPoller.js keeps live and getMaxConcurrentCalls() already relies on.
+      pool.query(`
+        SELECT
+          (SELECT COUNT(*) FROM gateway_ports)::int AS total_ports,
+          (SELECT COUNT(*) FROM gateway_port_telemetry
+             WHERE registration_status = 'REGISTER_OK' AND last_polled > NOW() - INTERVAL '90 seconds')::int AS registered_ports
+      `),
+      // Cross-tenant version of campaignController.js's getLiveCalls - same "currently
+      // processing" definition, just without the tenant filter.
+      pool.query(`
+        SELECT cl.id AS lead_id, cl.customer_name, cl.phone_number, t.name AS tenant_name,
+               vc.name AS campaign_name, cl.updated_at AS dispatched_at
+        FROM campaign_leads cl
+        JOIN voice_campaigns vc ON vc.id = cl.campaign_id
+        JOIN tenants t ON t.id = vc.tenant_id
+        WHERE cl.dial_status = 'processing'
+        ORDER BY cl.updated_at ASC
+        LIMIT 8
+      `),
+      // "Needs attention" = paused mid-run, or a tenant low on balance with a still-active
+      // campaign that could stall on them next.
+      pool.query(`
+        SELECT vc.id, vc.name, vc.status, vc.total_leads, vc.processed_leads, t.id AS tenant_id, t.name AS tenant_name, t.credit_balance
+        FROM voice_campaigns vc
+        JOIN tenants t ON t.id = vc.tenant_id
+        WHERE vc.status = 'paused' OR (vc.status IN ('running', 'preparing') AND t.credit_balance <= $1)
+        ORDER BY vc.updated_at DESC
+        LIMIT 6
+      `, [LOW_CREDIT_THRESHOLD]),
+      pool.query(`
+        SELECT 'dnc' AS type, dn.created_at AS at, t.name AS tenant_name, NULL::text AS detail
+        FROM dnc_numbers dn
+        LEFT JOIN campaign_leads cl ON cl.id = dn.source_lead_id
+        LEFT JOIN voice_campaigns vc ON vc.id = cl.campaign_id
+        LEFT JOIN tenants t ON t.id = vc.tenant_id
+        ORDER BY dn.created_at DESC
+        LIMIT 5
+      `),
+      pool.query(`
+        SELECT 'topup' AS type, ct.created_at AS at, t.name AS tenant_name, ct.amount::text AS detail
+        FROM credit_transactions ct
+        JOIN tenants t ON t.id = ct.tenant_id
+        WHERE ct.type = 'topup'
+        ORDER BY ct.created_at DESC
+        LIMIT 5
+      `),
+      // A campaign auto-cancelled by finalizeLead's zero-balance guard (bulkCampaignWorker.js) is
+      // a genuine safety event worth surfacing, not a manual pause - both share status='cancelled'
+      // with no stored reason, so this can't distinguish "ran out of credit" from "cancelled for
+      // some other reason" - shown as a general cancellation event rather than overclaiming why.
+      pool.query(`
+        SELECT 'cancelled' AS type, vc.updated_at AS at, t.name AS tenant_name, vc.name AS detail
+        FROM voice_campaigns vc
+        JOIN tenants t ON t.id = vc.tenant_id
+        WHERE vc.status = 'cancelled'
+        ORDER BY vc.updated_at DESC
+        LIMIT 5
       `)
     ]);
+
+    const recentActivity = [...recentDncResult.rows, ...recentTopupsResult.rows, ...recentCancelledResult.rows]
+      .sort((a, b) => new Date(b.at) - new Date(a.at))
+      .slice(0, 6);
 
     const outcomeCounts = { pending: 0, processing: 0, answered: 0, busy: 0, failed: 0, 'no-answer': 0, opted_out: 0 };
     for (const row of outcomeResult.rows) {
@@ -241,7 +317,12 @@ export async function getAdminOverview(req, res) {
       totalDialed,
       outcomeCounts,
       dailyTrend: trendResult.rows.map((r) => ({ day: r.day, answered: r.answered, rejected: r.rejected })),
-      topTenants: topTenantsResult.rows
+      topTenants: topTenantsResult.rows,
+      lowBalanceClients: lowBalanceResult.rows,
+      portCapacity: portCapacityResult.rows[0],
+      liveCalls: liveCallsResult.rows,
+      attentionCampaigns: attentionCampaignsResult.rows,
+      recentActivity
     });
   } catch (error) {
     console.error('getAdminOverview failed:', error);

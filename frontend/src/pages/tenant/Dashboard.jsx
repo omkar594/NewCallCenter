@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip,
-  RadialBarChart, RadialBar, PolarAngleAxis, Sankey
+  RadialBarChart, RadialBar, PolarAngleAxis, PieChart, Pie, Cell
 } from 'recharts';
 import { apiGet } from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -220,23 +220,22 @@ export default function TenantDashboard() {
     Balance: h.balance
   }));
 
-  // Sankey wants { nodes: [{name}], links: [{source, target, value}] } with indices into nodes -
-  // zero-value links are dropped since a 0-width flow just renders as visual noise.
+  // A single-source Sankey (Total Leads -> 6 outcomes) rendered as bare, unstyled flows with no
+  // room for labels - a donut reads far better for "how does one whole split into categories".
   const outcomeLabels = [
-    { key: 'answered', name: 'Answered' },
-    { key: 'busy', name: 'Busy' },
-    { key: 'failed', name: 'Failed' },
-    { key: 'no-answer', name: 'No Answer' },
-    { key: 'pending', name: 'Pending' },
-    { key: 'processing', name: 'In Progress' }
+    { key: 'answered', name: 'Answered', light: '#4e948f', dark: '#00ff66' },
+    { key: 'busy', name: 'Busy', light: '#f59e0b', dark: '#f59e0b' },
+    { key: 'failed', name: 'Failed', light: '#ef4444', dark: '#ff6363' },
+    { key: 'no-answer', name: 'No Answer', light: '#fb923c', dark: '#fb923c' },
+    { key: 'pending', name: 'Pending', light: '#94a3b8', dark: '#8892a6' },
+    { key: 'processing', name: 'In Progress', light: '#b026ff', dark: '#b026ff' }
   ];
-  const sankeyData = overview ? {
-    nodes: [{ name: 'Total Leads' }, ...outcomeLabels.map((o) => ({ name: o.name }))],
-    links: outcomeLabels
-      .map((o, i) => ({ source: 0, target: i + 1, value: overview.outcomeCounts[o.key] }))
-      .filter((l) => l.value > 0)
-  } : null;
-  const hasSankeyData = sankeyData && sankeyData.links.length > 0;
+  const outcomeChartData = overview
+    ? outcomeLabels
+        .map((o) => ({ name: o.name, value: overview.outcomeCounts[o.key], color: theme === 'dark' ? o.dark : o.light }))
+        .filter((o) => o.value > 0)
+    : [];
+  const totalLeadsForDonut = outcomeChartData.reduce((sum, o) => sum + o.value, 0);
 
   return (
     <div className="space-y-6">
@@ -292,28 +291,52 @@ export default function TenantDashboard() {
             )}
           </CardShell>
 
-          <CardShell title="Lead Outcome Flow" icon={Target}>
-            {!hasSankeyData ? (
+          <CardShell title="Lead Outcomes" icon={Target}>
+            {outcomeChartData.length === 0 ? (
               <p className="text-sm text-slate-400 dark:text-abyss-100 py-16 text-center">No dialed leads yet to visualize.</p>
             ) : (
-              <ResponsiveContainer width="100%" height={240}>
-                <Sankey
-                  data={sankeyData}
-                  nodePadding={24}
-                  margin={{ top: 10, bottom: 10, left: 10, right: 90 }}
-                  link={{ stroke: theme === 'dark' ? '#00f0ff' : '#4e948f', strokeOpacity: theme === 'dark' ? 0.25 : 0.35 }}
-                  node={{ fill: theme === 'dark' ? '#00f0ff' : '#4e948f', stroke: 'none' }}
-                >
-                  <Tooltip
-                    contentStyle={{
-                      background: theme === 'dark' ? '#0d0f17' : '#fff',
-                      border: `1px solid ${theme === 'dark' ? 'rgba(0,240,255,0.2)' : '#e2e8f0'}`,
-                      borderRadius: 8,
-                      fontSize: 13
-                    }}
-                  />
-                </Sankey>
-              </ResponsiveContainer>
+              <div className="flex items-center gap-6">
+                <div className="relative w-40 h-40 shrink-0 dark:drop-shadow-[0_0_10px_rgba(0,240,255,0.35)]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={outcomeChartData}
+                        dataKey="value"
+                        nameKey="name"
+                        innerRadius="65%"
+                        outerRadius="100%"
+                        paddingAngle={3}
+                        stroke="none"
+                      >
+                        {outcomeChartData.map((o) => (
+                          <Cell key={o.name} fill={o.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          background: theme === 'dark' ? '#0d0f17' : '#fff',
+                          border: `1px solid ${theme === 'dark' ? 'rgba(0,240,255,0.2)' : '#e2e8f0'}`,
+                          borderRadius: 8,
+                          fontSize: 13
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-xl font-semibold font-display text-ink-900 dark:text-white">{totalLeadsForDonut}</span>
+                    <span className="text-[10px] text-ink-400 dark:text-abyss-50">Total Leads</span>
+                  </div>
+                </div>
+                <div className="space-y-1.5 min-w-0">
+                  {outcomeChartData.map((o) => (
+                    <div key={o.name} className="flex items-center gap-2 text-xs">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: o.color, boxShadow: theme === 'dark' ? `0 0 6px ${o.color}` : 'none' }} />
+                      <span className="text-ink-700 dark:text-slate-300 truncate">{o.name}</span>
+                      <span className="text-ink-400 dark:text-abyss-50 ml-auto">{o.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </CardShell>
         </div>
