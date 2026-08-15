@@ -37,6 +37,23 @@ class ApiError extends Error {
   }
 }
 
+// On a 401 (invalid/expired token), every caller must go straight to the login screen with
+// nothing else rendered first - no flash of "Invalid or expired access token" scattered across
+// dashboard cards while a `window.location.href` navigation is still in flight (that navigation
+// is asynchronous; JS execution and React's re-render keep running until the browser actually
+// unloads the page). So this clears storage, kicks off the redirect, and then returns a promise
+// that never resolves - every `await apiGet(...)` call site just hangs at that line instead of
+// falling into its catch block and calling setError/setState, which is what caused the flash.
+function handleUnauthorized() {
+  setStoredAuth(null);
+  const onAdminPortal = window.location.pathname.startsWith('/admin');
+  const loginPath = onAdminPortal ? '/admin/login' : '/login';
+  if (window.location.pathname !== loginPath) {
+    window.location.href = loginPath;
+  }
+  return new Promise(() => {});
+}
+
 // `body`: a plain object (sent as JSON) or a FormData instance (sent as-is, letting the browser
 // set its own multipart boundary - never set Content-Type manually for file uploads).
 async function request(path, { method = 'GET', body, headers = {} } = {}) {
@@ -57,11 +74,7 @@ async function request(path, { method = 'GET', body, headers = {} } = {}) {
   });
 
   if (res.status === 401) {
-    setStoredAuth(null);
-    if (window.location.pathname !== '/login') {
-      window.location.href = '/login';
-    }
-    throw new ApiError('Session expired - please log in again', 401, null);
+    return handleUnauthorized();
   }
 
   const contentType = res.headers.get('content-type') || '';
@@ -94,11 +107,7 @@ export async function apiPostAudioBlob(path, body) {
   });
 
   if (res.status === 401) {
-    setStoredAuth(null);
-    if (window.location.pathname !== '/login') {
-      window.location.href = '/login';
-    }
-    throw new ApiError('Session expired - please log in again', 401, null);
+    return handleUnauthorized();
   }
   if (!res.ok) {
     const data = await res.json().catch(() => null);
@@ -119,11 +128,7 @@ export async function apiDownload(path, filename) {
   const res = await fetch(`${resolveApiBaseUrl()}${path}`, { headers: finalHeaders });
 
   if (res.status === 401) {
-    setStoredAuth(null);
-    if (window.location.pathname !== '/login') {
-      window.location.href = '/login';
-    }
-    throw new ApiError('Session expired - please log in again', 401, null);
+    return handleUnauthorized();
   }
   if (!res.ok) {
     const data = await res.json().catch(() => null);
