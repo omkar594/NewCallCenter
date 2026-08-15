@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Radio, AlertCircle, PhoneCall, Workflow, ShieldCheck, Lock, User, Activity, Wifi } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { homeForRole } from '../components/ProtectedRoute.jsx';
@@ -12,13 +12,20 @@ const HIGHLIGHTS = [
 ];
 
 // variant: 'client' (default, /login) or 'admin' (/admin/login) - two separate URLs so an admin
-// bookmark/link never doubles as a client-facing login page and vice versa. Enforced here, not
-// just cosmetic: a super_admin logging in via /login (or a client role via /admin/login) is
-// immediately logged back out and told to use the other URL, rather than silently redirected to
-// their real home - App.jsx's route-level redirect (user ? <Navigate .../> : <Login/>) would
-// otherwise happen regardless of which portal they started from.
+// bookmark/link never doubles as a client-facing login page and vice versa. Enforced server-side
+// (authController.js's login() rejects a wrong-portal login with the exact same response as a
+// wrong password) rather than here - a client-side "you logged in, but wrong portal" message
+// would confirm the credentials were valid, letting anyone probing this page with guessed admin
+// credentials tell when they'd found a real one. So a portal mismatch just surfaces as the same
+// generic err.message below as any other failed login; the link out to the other portal (see
+// OTHER_PORTAL below) is shown unconditionally, never tied to whether an attempt succeeded.
+const OTHER_PORTAL = {
+  client: { path: '/admin/login', label: 'Admin sign in' },
+  admin: { path: '/login', label: 'Client sign in' }
+};
+
 export default function Login({ variant = 'client' }) {
-  const { login, logout } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -30,18 +37,7 @@ export default function Login({ variant = 'client' }) {
     setError('');
     setSubmitting(true);
     try {
-      const { user } = await login(username, password);
-      const isAdminAccount = user.role === 'super_admin';
-      if (variant === 'admin' && !isAdminAccount) {
-        logout();
-        setError('This is the Admin Portal. Please sign in with your client account at /login instead.');
-        return;
-      }
-      if (variant === 'client' && isAdminAccount) {
-        logout();
-        setError('This is the Client Portal. Please sign in with your admin account at /admin/login instead.');
-        return;
-      }
+      const { user } = await login(username, password, variant);
       navigate(homeForRole(user.role), { replace: true });
     } catch (err) {
       setError(err.message || 'Login failed');
@@ -182,6 +178,11 @@ export default function Login({ variant = 'client' }) {
 
           <p className="text-center text-xs text-slate-400 lg:text-ink-400 mt-6">
             Secured multi-tenant access · CallCenter Console
+          </p>
+          <p className="text-center text-xs mt-2">
+            <Link to={OTHER_PORTAL[variant].path} className="text-brand-300 lg:text-brand-600 hover:underline">
+              {OTHER_PORTAL[variant].label} →
+            </Link>
           </p>
         </div>
       </div>

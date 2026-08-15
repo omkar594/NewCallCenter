@@ -7,7 +7,7 @@ import { getOrProvisionAgentSipCredentials } from '../services/agentProvisioning
 const DEFAULT_TENANT_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
 
 export async function login(req, res) {
-  const { username, password } = req.body;
+  const { username, password, portal } = req.body;
 
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required' });
@@ -34,6 +34,18 @@ export async function login(req, res) {
 
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
     if (!passwordMatch) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    // Enforces the /login (client) vs /admin/login (admin) portal split at the network level,
+    // not just in the frontend's post-login redirect - a wrong-portal login must be
+    // indistinguishable from a wrong password (same status, same message). Checking role only
+    // AFTER the password already matched, and returning the exact same 401 response as the
+    // password-mismatch branch above, closes an account-enumeration oracle: without this, a
+    // correct-password-wrong-portal attempt would visibly differ from a wrong-password attempt,
+    // letting someone probing the client login page confirm they'd found a valid admin password.
+    const isAdminAccount = user.role === 'super_admin';
+    if ((portal === 'admin' && !isAdminAccount) || (portal === 'client' && isAdminAccount)) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 

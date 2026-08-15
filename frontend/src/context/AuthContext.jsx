@@ -9,8 +9,14 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [auth, setAuth] = useState(() => getStoredAuth());
 
-  const login = useCallback(async (username, password) => {
-    const data = await apiPost('/api/auth/login', { username, password });
+  // `portal`: 'client' (/login) or 'admin' (/admin/login) - passed through so the backend can
+  // reject a wrong-portal login with the exact same response as a wrong password (see
+  // authController.js's login()). Enforcing this server-side, not just redirecting post-login,
+  // is what keeps a correct-password-wrong-portal attempt indistinguishable from a genuinely
+  // wrong password - otherwise someone probing the client login with guessed admin credentials
+  // could tell when they'd found a valid one.
+  const login = useCallback(async (username, password, portal) => {
+    const data = await apiPost('/api/auth/login', { username, password, portal });
     const nextAuth = { token: data.token, user: data.user };
     setStoredAuth(nextAuth);
     setAuth(nextAuth);
