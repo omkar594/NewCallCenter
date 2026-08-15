@@ -11,8 +11,14 @@ const HIGHLIGHTS = [
   { icon: ShieldCheck, text: 'Isolated, secure multi-tenant control' }
 ];
 
-export default function Login() {
-  const { login } = useAuth();
+// variant: 'client' (default, /login) or 'admin' (/admin/login) - two separate URLs so an admin
+// bookmark/link never doubles as a client-facing login page and vice versa. Enforced here, not
+// just cosmetic: a super_admin logging in via /login (or a client role via /admin/login) is
+// immediately logged back out and told to use the other URL, rather than silently redirected to
+// their real home - App.jsx's route-level redirect (user ? <Navigate .../> : <Login/>) would
+// otherwise happen regardless of which portal they started from.
+export default function Login({ variant = 'client' }) {
+  const { login, logout } = useAuth();
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -25,6 +31,17 @@ export default function Login() {
     setSubmitting(true);
     try {
       const { user } = await login(username, password);
+      const isAdminAccount = user.role === 'super_admin';
+      if (variant === 'admin' && !isAdminAccount) {
+        logout();
+        setError('Yeh Admin Portal hai - apna client account /login se access karein.');
+        return;
+      }
+      if (variant === 'client' && isAdminAccount) {
+        logout();
+        setError('Yeh Client Portal hai - admin account ke liye /admin/login use karein.');
+        return;
+      }
       navigate(homeForRole(user.role), { replace: true });
     } catch (err) {
       setError(err.message || 'Login failed');
@@ -107,8 +124,17 @@ export default function Login() {
 
           <div className="bg-white/95 backdrop-blur lg:bg-white/90 rounded-2xl shadow-2xl shadow-black/40 lg:shadow-brand-900/10 border border-white/10 lg:border-brand-100 p-8">
             <div className="mb-6">
-              <h2 className="text-xl font-semibold text-ink-900">Welcome back</h2>
-              <p className="text-sm text-ink-400 mt-1">Sign in to your console</p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-semibold text-ink-900">Welcome back</h2>
+                {variant === 'admin' && (
+                  <span className="text-[10px] font-semibold tracking-wide text-coral-700 bg-coral-100 rounded-full px-2 py-0.5">
+                    ADMIN PORTAL
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-ink-400 mt-1">
+                {variant === 'admin' ? 'Super admin sign in' : 'Sign in to your console'}
+              </p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">

@@ -29,7 +29,11 @@ export default function App() {
 
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to={homeForRole(user.role)} replace /> : <Login />} />
+      <Route path="/login" element={user ? <Navigate to={homeForRole(user.role)} replace /> : <Login variant="client" />} />
+      {/* Separate URL from /login (see Login.jsx) so an admin bookmark/link never doubles as the
+          client-facing sign-in page, and a client account can't accidentally land here either -
+          Login.jsx itself rejects a role/variant mismatch rather than this route just trusting it. */}
+      <Route path="/admin/login" element={user ? <Navigate to={homeForRole(user.role)} replace /> : <Login variant="admin" />} />
 
       <Route element={<ProtectedRoute roles={['super_admin']} />}>
         <Route element={<Layout />}>
