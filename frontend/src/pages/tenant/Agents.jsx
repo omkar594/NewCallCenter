@@ -22,8 +22,8 @@ export default function Agents() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Agents</h1>
-          <p className="text-sm text-slate-500">Agents who can take calls transferred from your campaigns.</p>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Agents</h1>
+          <p className="text-sm text-slate-500 dark:text-abyss-50">Agents who can take calls transferred from your campaigns.</p>
         </div>
         <button
           onClick={() => setShowCreate(true)}
@@ -34,7 +34,7 @@ export default function Agents() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
+        <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-400/10 rounded-md px-3 py-2">
           <AlertCircle className="w-4 h-4" /> {error}
         </div>
       )}
@@ -84,27 +84,27 @@ function CreateAgentModal({ onClose, onCreated }) {
     <Modal title="New Agent" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Username</label>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Username</label>
           <input
             required
             autoFocus
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            className="w-full border border-slate-300 dark:border-abyss-200/50 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:focus:ring-neon-cyan/50"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Password</label>
           <input
             required
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            className="w-full border border-slate-300 dark:border-abyss-200/50 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:focus:ring-neon-cyan/50"
           />
         </div>
         {error && (
-          <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
+          <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-400/10 rounded-md px-3 py-2">
             <AlertCircle className="w-4 h-4" /> {error}
           </div>
         )}

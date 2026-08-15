@@ -25,12 +25,12 @@ export default function SuperAdminDashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Tenants</h1>
-          <p className="text-sm text-slate-500">Every client onboarded on this platform.</p>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-white dark:font-display">Tenants</h1>
+          <p className="text-sm text-slate-500 dark:text-abyss-50">Every client onboarded on this platform.</p>
         </div>
         <Link
           to="/admin/onboard"
-          className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-md"
+          className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 dark:bg-neon-cyan/10 dark:hover:bg-neon-cyan/20 dark:text-neon-cyan dark:shadow-[0_0_16px_-4px_rgba(0,240,255,0.5)] dark:border dark:border-neon-cyan/30 text-white text-sm font-medium px-4 py-2 rounded-md"
         >
           <Plus className="w-4 h-4" />
           Onboard Client
@@ -38,7 +38,7 @@ export default function SuperAdminDashboard() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
+        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 dark:bg-red-400/10 dark:text-red-300 rounded-md px-3 py-2">
           <AlertCircle className="w-4 h-4" /> {error}
         </div>
       )}
@@ -51,7 +51,7 @@ export default function SuperAdminDashboard() {
             key: 'name',
             label: 'Tenant',
             render: (t) => (
-              <Link to={`/admin/tenants/${t.id}`} className="flex items-center gap-2 text-slate-900 font-medium hover:text-brand-600">
+              <Link to={`/admin/tenants/${t.id}`} className="flex items-center gap-2 text-slate-900 dark:text-white font-medium hover:text-brand-600 dark:hover:text-neon-cyan">
                 <Users className="w-4 h-4 text-slate-400" />
                 {t.name}
               </Link>

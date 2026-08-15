@@ -16,13 +16,13 @@ const TONE_CLASSES = {
 
 function StatCard({ icon: Icon, label, value, tone = 'brand' }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-5 flex items-center gap-4">
+    <div className="bg-white dark:bg-abyss-500 border border-slate-200 dark:border-abyss-300/30 rounded-lg p-5 flex items-center gap-4">
       <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${TONE_CLASSES[tone]}`}>
         <Icon className="w-5 h-5" />
       </div>
       <div>
-        <div className="text-2xl font-semibold text-slate-900">{value}</div>
-        <div className="text-xs text-slate-500">{label}</div>
+        <div className="text-2xl font-semibold text-slate-900 dark:text-white">{value}</div>
+        <div className="text-xs text-slate-500 dark:text-abyss-50">{label}</div>
       </div>
     </div>
   );
@@ -45,12 +45,12 @@ export default function Analytics() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">Analytics</h1>
-        <p className="text-sm text-slate-500">Live agent and call performance for your tenant.</p>
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Analytics</h1>
+        <p className="text-sm text-slate-500 dark:text-abyss-50">Live agent and call performance for your tenant.</p>
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
+        <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-400/10 rounded-md px-3 py-2">
           <AlertCircle className="w-4 h-4" /> {error}
         </div>
       )}
@@ -65,11 +65,11 @@ export default function Analytics() {
           </div>
 
           <section className="space-y-3">
-            <h2 className="font-medium text-slate-900">Agent Status</h2>
+            <h2 className="font-medium text-slate-900 dark:text-white">Agent Status</h2>
             <div className="flex flex-wrap gap-3">
               {Object.entries(metrics.agentStatusCounts).map(([status, count]) => (
-                <div key={status} className="bg-white border border-slate-200 rounded-md px-4 py-2 flex items-center gap-2 text-sm">
-                  <StatusBadge status={status} /> <span className="text-slate-600">{count}</span>
+                <div key={status} className="bg-white dark:bg-abyss-500 border border-slate-200 dark:border-abyss-300/30 rounded-md px-4 py-2 flex items-center gap-2 text-sm">
+                  <StatusBadge status={status} /> <span className="text-slate-600 dark:text-slate-300">{count}</span>
                 </div>
               ))}
             </div>
@@ -89,7 +89,7 @@ export default function Analytics() {
       )}
 
       <section className="space-y-3">
-        <h2 className="font-medium text-slate-900">Recent Calls</h2>
+        <h2 className="font-medium text-slate-900 dark:text-white">Recent Calls</h2>
         <DataTable
           rows={logs}
           emptyMessage="No calls logged yet."

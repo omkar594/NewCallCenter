@@ -14,15 +14,26 @@ const LOW_CREDIT_THRESHOLD = 20;
 // How often we re-fetch the actual list of live calls from the backend.
 const LIVE_CALLS_POLL_MS = 4000;
 
-function StatCard({ icon: Icon, label, value, warn }) {
+// Dark-mode glow color per card, matching the neon/glassmorphism reference brief - each metric
+// gets its own accent so the row reads as a real "analytical dashboard" rather than one flat tone.
+const ACCENTS = {
+  cyan: { icon: 'dark:text-neon-cyan', ring: 'dark:shadow-[0_0_20px_-4px_rgba(0,240,255,0.35)] dark:hover:shadow-[0_0_24px_-2px_rgba(0,240,255,0.5)]', bg: 'dark:bg-neon-cyan/10' },
+  purple: { icon: 'dark:text-neon-purple', ring: 'dark:shadow-[0_0_20px_-4px_rgba(176,38,255,0.35)] dark:hover:shadow-[0_0_24px_-2px_rgba(176,38,255,0.5)]', bg: 'dark:bg-neon-purple/10' },
+  green: { icon: 'dark:text-neon-green', ring: 'dark:shadow-[0_0_20px_-4px_rgba(0,255,102,0.35)] dark:hover:shadow-[0_0_24px_-2px_rgba(0,255,102,0.5)]', bg: 'dark:bg-neon-green/10' }
+};
+
+function StatCard({ icon: Icon, label, value, warn, accent = 'cyan' }) {
+  const a = ACCENTS[accent];
   return (
-    <div className="bg-white border border-brand-100 rounded-xl p-5 flex items-center gap-4 shadow-sm">
-      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${warn ? 'bg-coral-50 text-coral-600' : 'bg-brand-50 text-brand-600'}`}>
+    <div
+      className={`bg-white dark:bg-abyss-500/60 dark:backdrop-blur border border-brand-100 dark:border-white/10 rounded-xl p-5 flex items-center gap-4 shadow-sm transition-shadow ${warn ? '' : a.ring}`}
+    >
+      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${warn ? 'bg-coral-50 text-coral-600 dark:bg-coral-500/10 dark:text-coral-400' : `bg-brand-50 text-brand-600 ${a.bg} ${a.icon}`}`}>
         <Icon className="w-5 h-5" />
       </div>
       <div>
-        <div className={`text-2xl font-semibold ${warn ? 'text-coral-600' : 'text-ink-900'}`}>{value}</div>
-        <div className="text-xs text-ink-400">{label}</div>
+        <div className={`text-2xl font-semibold font-display ${warn ? 'text-coral-600 dark:text-coral-400' : `text-ink-900 dark:text-white ${warn ? '' : ''}`}`}>{value}</div>
+        <div className="text-xs text-ink-400 dark:text-abyss-50">{label}</div>
       </div>
     </div>
   );
@@ -38,26 +49,26 @@ function formatDuration(seconds) {
 function OngoingCallCard({ call, nowMs }) {
   const elapsedSec = Math.floor((nowMs - new Date(call.dispatched_at).getTime()) / 1000);
   return (
-    <div className="bg-white border border-brand-100 rounded-xl p-4 shadow-sm">
+    <div className="bg-white dark:bg-abyss-500/60 dark:backdrop-blur border border-brand-100 dark:border-neon-green/20 rounded-xl p-4 shadow-sm dark:shadow-[0_0_16px_-4px_rgba(0,255,102,0.3)]">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="w-9 h-9 shrink-0 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center">
+          <span className="w-9 h-9 shrink-0 rounded-full bg-brand-50 text-brand-600 dark:bg-neon-green/10 dark:text-neon-green flex items-center justify-center">
             <User className="w-4 h-4" />
           </span>
           <div className="min-w-0">
-            <div className="text-sm font-medium text-ink-900 truncate">{call.customer_name || 'Unknown'}</div>
-            <div className="text-xs text-ink-400 truncate">{call.phone_number}</div>
+            <div className="text-sm font-medium text-ink-900 dark:text-white truncate">{call.customer_name || 'Unknown'}</div>
+            <div className="text-xs text-ink-400 dark:text-abyss-50 truncate">{call.phone_number}</div>
           </div>
         </div>
-        <span className="shrink-0 inline-flex items-center gap-1.5 bg-coral-50 text-coral-600 text-xs font-medium px-2 py-1 rounded-full">
+        <span className="shrink-0 inline-flex items-center gap-1.5 bg-coral-50 text-coral-600 dark:bg-neon-green/10 dark:text-neon-green text-xs font-medium px-2 py-1 rounded-full">
           <span className="relative flex h-1.5 w-1.5">
-            <span className="absolute inline-flex h-full w-full rounded-full bg-coral-500 opacity-75 animate-ping" />
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-coral-500" />
+            <span className="absolute inline-flex h-full w-full rounded-full bg-coral-500 dark:bg-neon-green opacity-75 animate-ping" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-coral-500 dark:bg-neon-green" />
           </span>
           {formatDuration(elapsedSec)}
         </span>
       </div>
-      <div className="mt-3 flex items-center gap-1.5 text-xs text-brand-700 bg-brand-50 rounded-md px-2 py-1 truncate">
+      <div className="mt-3 flex items-center gap-1.5 text-xs text-brand-700 bg-brand-50 dark:bg-white/5 dark:text-abyss-50 rounded-md px-2 py-1 truncate">
         <Megaphone className="w-3 h-3 shrink-0" />
         <span className="truncate">{call.campaign_name}</span>
       </div>
@@ -120,37 +131,38 @@ export default function TenantDashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-ink-900">Welcome, {user?.tenant_name}</h1>
-        <p className="text-sm text-ink-400">Here's what's happening across your flows and campaigns.</p>
+        <h1 className="text-xl font-semibold text-ink-900 dark:text-white dark:font-display">Welcome, {user?.tenant_name}</h1>
+        <p className="text-sm text-ink-400 dark:text-abyss-50">Here's what's happening across your flows and campaigns.</p>
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 text-sm text-coral-700 bg-coral-50 rounded-md px-3 py-2">
+        <div className="flex items-center gap-2 text-sm text-coral-700 bg-coral-50 dark:bg-coral-500/10 dark:text-coral-300 rounded-md px-3 py-2">
           <AlertCircle className="w-4 h-4" /> {error}
         </div>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={Megaphone} label="Campaigns" value={campaigns.length} />
-        <StatCard icon={Workflow} label="Flows" value={flows.length} />
-        <StatCard icon={Server} label="SIM Ports" value={ports.map((p) => p.port_number).join(', ') || 'none'} />
+        <StatCard icon={Megaphone} label="Campaigns" value={campaigns.length} accent="cyan" />
+        <StatCard icon={Workflow} label="Flows" value={flows.length} accent="purple" />
+        <StatCard icon={Server} label="SIM Ports" value={ports.map((p) => p.port_number).join(', ') || 'none'} accent="cyan" />
         <StatCard
           icon={Coins}
           label="Credits Remaining"
           value={credits === null ? '...' : credits}
           warn={credits !== null && credits <= LOW_CREDIT_THRESHOLD}
+          accent="green"
         />
       </div>
 
       <section className="space-y-3">
-        <h2 className="font-medium text-ink-900 flex items-center gap-2">
-          <PhoneCall className="w-4 h-4 text-coral-500" /> Ongoing Calls
+        <h2 className="font-medium text-ink-900 dark:text-white flex items-center gap-2">
+          <PhoneCall className="w-4 h-4 text-coral-500 dark:text-neon-green" /> Ongoing Calls
           {liveCalls.length > 0 && (
-            <span className="text-xs font-semibold bg-coral-500 text-white rounded-full px-2 py-0.5">{liveCalls.length}</span>
+            <span className="text-xs font-semibold bg-coral-500 dark:bg-neon-green/20 dark:text-neon-green text-white rounded-full px-2 py-0.5">{liveCalls.length}</span>
           )}
         </h2>
         {liveCalls.length === 0 ? (
-          <div className="text-sm text-ink-400 py-8 text-center border border-dashed border-brand-200 rounded-xl bg-white/60">
+          <div className="text-sm text-ink-400 dark:text-abyss-50 py-8 text-center border border-dashed border-brand-200 dark:border-white/10 rounded-xl bg-white/60 dark:bg-abyss-500/30">
             No calls in progress right now.
           </div>
         ) : (
@@ -164,8 +176,8 @@ export default function TenantDashboard() {
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-medium text-ink-900">Recent Campaigns</h2>
-          <Link to="/app/campaigns" className="text-sm text-brand-600 hover:underline">View all</Link>
+          <h2 className="font-medium text-ink-900 dark:text-white">Recent Campaigns</h2>
+          <Link to="/app/campaigns" className="text-sm text-brand-600 dark:text-neon-cyan hover:underline">View all</Link>
         </div>
         <DataTable
           rows={campaigns.slice(0, 5)}
@@ -174,7 +186,7 @@ export default function TenantDashboard() {
             {
               key: 'name',
               label: 'Name',
-              render: (c) => <Link to={`/app/campaigns/${c.id}`} className="text-ink-900 font-medium hover:text-brand-600">{c.name}</Link>
+              render: (c) => <Link to={`/app/campaigns/${c.id}`} className="text-ink-900 dark:text-white font-medium hover:text-brand-600 dark:hover:text-neon-cyan">{c.name}</Link>
             },
             { key: 'status', label: 'Status', render: (c) => <StatusBadge status={c.status} /> },
             { key: 'total_leads', label: 'Leads' },

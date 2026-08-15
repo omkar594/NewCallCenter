@@ -48,12 +48,12 @@ export default function CampaignDetail() {
 
   if (error) {
     return (
-      <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
+      <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-400/10 rounded-md px-3 py-2">
         <AlertCircle className="w-4 h-4" /> {error}
       </div>
     );
   }
-  if (!report) return <p className="text-sm text-slate-500">Loading...</p>;
+  if (!report) return <p className="text-sm text-slate-500 dark:text-abyss-50">Loading...</p>;
 
   const { campaign, metrics, leads } = report;
   const isLive = campaign.status === 'preparing' || metrics.pending > 0 || metrics.processing > 0;
@@ -89,18 +89,18 @@ export default function CampaignDetail() {
     <div className="space-y-6">
       <Link
         to={tenantId ? `/admin/tenants/${tenantId}` : '/app/campaigns'}
-        className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700"
+        className="inline-flex items-center gap-1 text-sm text-slate-500 dark:text-abyss-50 hover:text-slate-700"
       >
         <ArrowLeft className="w-4 h-4" /> {tenantId ? 'Back to tenant' : 'All campaigns'}
       </Link>
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">{campaign.name}</h1>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-white">{campaign.name}</h1>
           <div className="flex items-center gap-2 mt-1">
             <StatusBadge status={campaign.status} />
             {isLive && campaign.status !== 'paused' && (
-              <span className="flex items-center gap-1 text-xs text-slate-400">
+              <span className="flex items-center gap-1 text-xs text-slate-400 dark:text-abyss-100">
                 <RefreshCw className="w-3 h-3 animate-spin" /> updating live
               </span>
             )}
@@ -122,7 +122,7 @@ export default function CampaignDetail() {
               type="button"
               onClick={() => handlePauseResume('resume')}
               disabled={actionLoading}
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-1.5 hover:bg-emerald-100 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-700 dark:text-neon-green bg-emerald-50 dark:bg-neon-green/10 border border-emerald-200 rounded-md px-3 py-1.5 hover:bg-emerald-100 disabled:opacity-50"
             >
               <Play className="w-4 h-4" /> {actionLoading ? 'Resuming...' : 'Resume'}
             </button>
@@ -131,7 +131,7 @@ export default function CampaignDetail() {
             type="button"
             onClick={handleDownloadCsv}
             disabled={downloading}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-md px-3 py-1.5 hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-abyss-500 border border-slate-200 dark:border-abyss-300/30 rounded-md px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-abyss-300/20 disabled:opacity-50"
           >
             <Download className="w-4 h-4" /> {downloading ? 'Downloading...' : 'Download CSV'}
           </button>
@@ -140,9 +140,9 @@ export default function CampaignDetail() {
 
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
         {['total', 'pending', 'processing', 'answered', 'failed', 'busy'].map((key) => (
-          <div key={key} className="bg-white border border-slate-200 rounded-lg p-3 text-center">
-            <div className="text-xl font-semibold text-slate-900">{metrics[key]}</div>
-            <div className="text-xs text-slate-500 capitalize">{key}</div>
+          <div key={key} className="bg-white dark:bg-abyss-500 border border-slate-200 dark:border-abyss-300/30 rounded-lg p-3 text-center">
+            <div className="text-xl font-semibold text-slate-900 dark:text-white">{metrics[key]}</div>
+            <div className="text-xs text-slate-500 dark:text-abyss-50 capitalize">{key}</div>
           </div>
         ))}
       </div>
@@ -160,7 +160,7 @@ export default function CampaignDetail() {
       )}
 
       <section className="space-y-3">
-        <h2 className="font-medium text-slate-900">Leads</h2>
+        <h2 className="font-medium text-slate-900 dark:text-white">Leads</h2>
         <DataTable
           rows={leads}
           emptyMessage="No leads."
@@ -174,11 +174,11 @@ export default function CampaignDetail() {
               key: 'dtmf_selected',
               label: 'DTMF Pressed',
               render: (l) => l.dtmf_selected ? (
-                <span className="inline-flex items-center gap-1 bg-brand-50 text-brand-700 text-xs font-medium px-2 py-1 rounded-full">
+                <span className="inline-flex items-center gap-1 bg-brand-50 dark:bg-neon-cyan/10 text-brand-700 dark:text-neon-cyan text-xs font-medium px-2 py-1 rounded-full">
                   <Hash className="w-3 h-3" />
                   {l.dtmf_selected}{l.dtmf_label ? ` · ${l.dtmf_label}` : ''}
                 </span>
-              ) : <span className="text-slate-300">—</span>
+              ) : <span className="text-slate-300 dark:text-abyss-200">—</span>
             },
             { key: 'updated_at', label: 'Updated', render: (l) => new Date(l.updated_at).toLocaleString() }
           ]}

@@ -1,10 +1,15 @@
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 body {
-  @apply text-ink-900 antialiased;
+  @apply text-ink-900 antialiased dark:text-slate-100;
   background-color: #f3f6f5;
+}
+
+/* `dark` class lives on <html> (see context/ThemeContext.jsx / Tailwind's darkMode: 'class'). */
+html.dark body {
+  background-color: #05060a;
 }

@@ -17,12 +17,12 @@ export default function SuperAdminCallLogs() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">Call Logs</h1>
-        <p className="text-sm text-slate-500">Most recent 100 calls, across every tenant.</p>
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Call Logs</h1>
+        <p className="text-sm text-slate-500 dark:text-abyss-50">Most recent 100 calls, across every tenant.</p>
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
+        <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-400/10 rounded-md px-3 py-2">
           <AlertCircle className="w-4 h-4" /> {error}
         </div>
       )}

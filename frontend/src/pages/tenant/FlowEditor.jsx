@@ -162,21 +162,21 @@ export default function FlowEditor() {
     }
   };
 
-  if (loading) return <p className="text-sm text-slate-500">Loading...</p>;
+  if (loading) return <p className="text-sm text-slate-500 dark:text-abyss-50">Loading...</p>;
 
   return (
     <div className="space-y-6 pb-16">
-      <button onClick={() => navigate('/app/flows')} className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700">
+      <button onClick={() => navigate('/app/flows')} className="inline-flex items-center gap-1 text-sm text-slate-500 dark:text-abyss-50 hover:text-slate-700">
         <ArrowLeft className="w-4 h-4" /> All flows
       </button>
 
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Flow name</label>
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Flow name</label>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Account Balance Flow"
-          className="w-full max-w-md border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+          className="w-full max-w-md border border-slate-300 dark:border-abyss-200/50 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:focus:ring-neon-cyan/50"
         />
       </div>
 
@@ -197,23 +197,23 @@ export default function FlowEditor() {
 
       <button
         onClick={addNode}
-        className="flex items-center gap-2 text-sm text-brand-600 hover:text-brand-700 border border-dashed border-brand-300 rounded-lg px-4 py-3 w-full justify-center"
+        className="flex items-center gap-2 text-sm text-brand-600 dark:text-neon-cyan hover:text-brand-700 border border-dashed border-brand-300 rounded-lg px-4 py-3 w-full justify-center"
       >
         <Plus className="w-4 h-4" /> Add Node
       </button>
 
       {error && (
-        <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
+        <div className="flex items-start gap-2 text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-400/10 rounded-md px-3 py-2">
           <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /> {error}
         </div>
       )}
       {success && (
-        <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-md px-3 py-2">
+        <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-neon-green bg-emerald-50 dark:bg-neon-green/10 rounded-md px-3 py-2">
           <CheckCircle2 className="w-4 h-4" /> {success}
         </div>
       )}
 
-      <div className="sticky bottom-0 bg-slate-50 pt-4">
+      <div className="sticky bottom-0 bg-slate-50 dark:bg-abyss-400/40 pt-4">
         <button
           onClick={handleSave}
           disabled={saving}
@@ -322,32 +322,32 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
   const patchConfig = (patch) => onChange({ configText: JSON.stringify({ ...parsedConfig, ...patch }, null, 2) });
 
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
+    <div className="bg-white dark:bg-abyss-500 border border-slate-200 dark:border-abyss-300/30 rounded-lg p-5 space-y-4">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-xs font-mono text-slate-400">#{index + 1}</span>
+          <span className="text-xs font-mono text-slate-400 dark:text-abyss-100">#{index + 1}</span>
           <input
             value={node.client_id}
             onChange={(e) => onChange({ client_id: e.target.value })}
-            className="border border-slate-300 rounded-md px-2 py-1 text-sm font-mono w-40"
+            className="border border-slate-300 dark:border-abyss-200/50 rounded-md px-2 py-1 text-sm font-mono w-40"
             placeholder="node_id"
           />
           <select
             value={node.type}
             onChange={(e) => onChange({ type: e.target.value })}
-            className="border border-slate-300 rounded-md px-2 py-1 text-sm"
+            className="border border-slate-300 dark:border-abyss-200/50 rounded-md px-2 py-1 text-sm"
           >
             {NODE_TYPES.map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
-          <label className="flex items-center gap-1.5 text-xs text-slate-600">
+          <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
             <input type="radio" checked={node.is_start} onChange={onSetStart} />
             Start node
           </label>
         </div>
         {canRemove && (
-          <button onClick={onRemove} className="text-slate-400 hover:text-red-600">
+          <button onClick={onRemove} className="text-slate-400 dark:text-abyss-100 hover:text-red-600">
             <Trash2 className="w-4 h-4" />
           </button>
         )}
@@ -355,7 +355,7 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
 
       {PROMPT_TYPES.has(node.type) && (
         <div className="space-y-2">
-          <div className="flex items-center gap-4 text-xs text-slate-500">
+          <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-abyss-50">
             <label className="flex items-center gap-1.5">
               <input type="radio" checked={node.promptMode === 'text'} onChange={() => onChange({ promptMode: 'text' })} />
               Type text (TTS)
@@ -364,7 +364,7 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
               <input type="radio" checked={node.promptMode === 'audio'} onChange={() => onChange({ promptMode: 'audio' })} />
               Upload audio
             </label>
-            {PROMPT_REQUIRED_TYPES.has(node.type) && <span className="text-slate-400">(required for {node.type})</span>}
+            {PROMPT_REQUIRED_TYPES.has(node.type) && <span className="text-slate-400 dark:text-abyss-100">(required for {node.type})</span>}
           </div>
           {node.promptMode === 'text' ? (
             <div className="space-y-2">
@@ -373,13 +373,13 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
                 onChange={(e) => onChange({ prompt_text: e.target.value })}
                 placeholder="Press 1 to check your balance. Press 9 to end this call. Use {{variable}} for values set earlier in the flow."
                 rows={2}
-                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="w-full border border-slate-300 dark:border-abyss-200/50 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:focus:ring-neon-cyan/50"
               />
               <div className="flex flex-wrap items-center gap-2">
                 <select
                   value={node.previewLanguage}
                   onChange={(e) => onChange({ previewLanguage: e.target.value })}
-                  className="border border-slate-300 rounded-md px-2 py-1 text-xs text-slate-600"
+                  className="border border-slate-300 dark:border-abyss-200/50 rounded-md px-2 py-1 text-xs text-slate-600 dark:text-slate-300"
                 >
                   {TTS_LANGUAGES.map((l) => (
                     <option key={l.code} value={l.code}>{l.label}</option>
@@ -390,7 +390,7 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
                     type="button"
                     onClick={handleTransliterate}
                     disabled={transliterating || !node.prompt_text.trim()}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-md px-2 py-1 disabled:opacity-50"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-abyss-400/40 hover:bg-slate-100 rounded-md px-2 py-1 disabled:opacity-50"
                   >
                     {transliterating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Languages className="w-3 h-3" />}
                     Suggest {node.previewLanguage === 'mr-IN' ? 'Marathi script' : 'Devanagari'}
@@ -400,7 +400,7 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
                   type="button"
                   onClick={handlePreview}
                   disabled={previewing || !node.prompt_text.trim()}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-md px-2 py-1 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 dark:text-neon-cyan bg-brand-50 dark:bg-neon-cyan/10 hover:bg-brand-100 rounded-md px-2 py-1 disabled:opacity-50"
                 >
                   {previewing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
                   Preview
@@ -408,42 +408,42 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
                 <audio ref={audioRef} className="hidden" />
               </div>
               {transliterationSuggestion && (
-                <div className="flex items-start gap-2 bg-brand-50 border border-brand-200 rounded-md px-3 py-2">
-                  <p className="flex-1 text-sm text-slate-800">{transliterationSuggestion}</p>
+                <div className="flex items-start gap-2 bg-brand-50 dark:bg-neon-cyan/10 border border-brand-200 dark:border-neon-cyan/20 rounded-md px-3 py-2">
+                  <p className="flex-1 text-sm text-slate-800 dark:text-white">{transliterationSuggestion}</p>
                   <button
                     type="button"
                     onClick={applyTransliteration}
-                    className="shrink-0 text-xs font-medium text-brand-700 hover:text-brand-800 underline"
+                    className="shrink-0 text-xs font-medium text-brand-700 dark:text-neon-cyan hover:text-brand-800 underline"
                   >
                     Use this text
                   </button>
                   <button
                     type="button"
                     onClick={() => setTransliterationSuggestion('')}
-                    className="shrink-0 text-xs text-slate-400 hover:text-slate-600"
+                    className="shrink-0 text-xs text-slate-400 dark:text-abyss-100 hover:text-slate-600 dark:hover:text-white"
                   >
                     Dismiss
                   </button>
                 </div>
               )}
-              {ttsToolError && <p className="text-xs text-red-600">{ttsToolError}</p>}
+              {ttsToolError && <p className="text-xs text-red-600 dark:text-red-300">{ttsToolError}</p>}
             </div>
           ) : (
             <div>
-              <label className="flex items-center gap-2 border-2 border-dashed border-slate-300 rounded-md px-3 py-2 text-sm cursor-pointer hover:border-brand-500">
-                <UploadCloud className="w-4 h-4 text-slate-400" />
+              <label className="flex items-center gap-2 border-2 border-dashed border-slate-300 dark:border-abyss-200/50 rounded-md px-3 py-2 text-sm cursor-pointer hover:border-brand-500 dark:hover:border-neon-cyan/60">
+                <UploadCloud className="w-4 h-4 text-slate-400 dark:text-abyss-100" />
                 {node.prompt_id ? `Uploaded: ${node.prompt_id}` : uploading ? 'Uploading...' : 'Choose audio file'}
                 <input type="file" accept="audio/*" className="hidden" onChange={(e) => e.target.files?.[0] && handleAudioUpload(e.target.files[0])} />
               </label>
-              {uploadError && <p className="text-xs text-red-600 mt-1">{uploadError}</p>}
+              {uploadError && <p className="text-xs text-red-600 dark:text-red-300 mt-1">{uploadError}</p>}
             </div>
           )}
         </div>
       )}
 
       {node.type === 'lookup' && (
-        <div className="space-y-3 border border-slate-200 rounded-md p-3 bg-slate-50">
-          <div className="flex items-center gap-4 text-xs text-slate-600">
+        <div className="space-y-3 border border-slate-200 dark:border-abyss-300/30 rounded-md p-3 bg-slate-50 dark:bg-abyss-400/40">
+          <div className="flex items-center gap-4 text-xs text-slate-600 dark:text-slate-300">
             <label className="flex items-center gap-1.5">
               <input
                 type="radio"
@@ -465,58 +465,58 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
           {parsedConfig.source_type === 'webhook' ? (
             <>
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Webhook URL</label>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Webhook URL</label>
                 <input
                   value={parsedConfig.webhook_url || ''}
                   onChange={(e) => patchConfig({ webhook_url: e.target.value })}
                   placeholder="https://your-backend.example.com/lookup"
-                  className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+                  className="w-full border border-slate-300 dark:border-abyss-200/50 rounded-md px-2 py-1.5 text-sm"
                 />
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-slate-500 dark:text-abyss-50">
                   Your own endpoint - it queries your real database however you like, we never see your DB credentials. We POST{' '}
-                  <code className="bg-white px-1 rounded">{'{ input: { [lookup_key]: value } }'}</code>, you respond with{' '}
-                  <code className="bg-white px-1 rounded">{'{ status: "found"|"not_found", data: {...} }'}</code>.
+                  <code className="bg-white dark:bg-abyss-500 px-1 rounded">{'{ input: { [lookup_key]: value } }'}</code>, you respond with{' '}
+                  <code className="bg-white dark:bg-abyss-500 px-1 rounded">{'{ status: "found"|"not_found", data: {...} }'}</code>.
                 </p>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Authorization header (optional)</label>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Authorization header (optional)</label>
                 <input
                   value={parsedConfig.webhook_auth_header || ''}
                   onChange={(e) => patchConfig({ webhook_auth_header: e.target.value })}
                   placeholder="Bearer your-api-token"
-                  className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+                  className="w-full border border-slate-300 dark:border-abyss-200/50 rounded-md px-2 py-1.5 text-sm"
                 />
               </div>
             </>
           ) : (
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Lookup Table ID</label>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Lookup Table ID</label>
               <input
                 value={parsedConfig.table_id || ''}
                 onChange={(e) => patchConfig({ table_id: e.target.value })}
                 placeholder="paste the ID copied from Lookup Tables"
-                className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm font-mono"
+                className="w-full border border-slate-300 dark:border-abyss-200/50 rounded-md px-2 py-1.5 text-sm font-mono"
               />
             </div>
           )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Lookup key</label>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Lookup key</label>
               <input
                 value={parsedConfig.lookup_key || ''}
                 onChange={(e) => patchConfig({ lookup_key: e.target.value })}
                 placeholder="account_number"
-                className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+                className="w-full border border-slate-300 dark:border-abyss-200/50 rounded-md px-2 py-1.5 text-sm"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Response variable prefix</label>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Response variable prefix</label>
               <input
                 value={parsedConfig.response_var_prefix || ''}
                 onChange={(e) => patchConfig({ response_var_prefix: e.target.value })}
                 placeholder="account_"
-                className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+                className="w-full border border-slate-300 dark:border-abyss-200/50 rounded-md px-2 py-1.5 text-sm"
               />
             </div>
           </div>
@@ -526,8 +526,8 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
       {BRANCH_TYPES.has(node.type) ? (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-medium text-slate-600">Branches</label>
-            <button onClick={addBranch} className="text-xs text-brand-600 hover:underline">+ add branch</button>
+            <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Branches</label>
+            <button onClick={addBranch} className="text-xs text-brand-600 dark:text-neon-cyan hover:underline">+ add branch</button>
           </div>
           {node.branches.map((b, i) => (
             <div key={i} className="flex items-center gap-2">
@@ -535,13 +535,13 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
                 value={b.matchValue}
                 onChange={(e) => updateBranch(i, { matchValue: e.target.value })}
                 placeholder={node.type === 'lookup' ? 'found / not_found / error' : 'match value (e.g. 1, human)'}
-                className="border border-slate-300 rounded-md px-2 py-1 text-sm flex-1"
+                className="border border-slate-300 dark:border-abyss-200/50 rounded-md px-2 py-1 text-sm flex-1"
               />
-              <span className="text-slate-400 text-xs">-&gt;</span>
+              <span className="text-slate-400 dark:text-abyss-100 text-xs">-&gt;</span>
               <select
                 value={b.target}
                 onChange={(e) => updateBranch(i, { target: e.target.value })}
-                className="border border-slate-300 rounded-md px-2 py-1 text-sm flex-1"
+                className="border border-slate-300 dark:border-abyss-200/50 rounded-md px-2 py-1 text-sm flex-1"
               >
                 <option value="">choose node</option>
                 {otherNodes.map((n) => (
@@ -555,9 +555,9 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
                 value={b.label}
                 onChange={(e) => updateBranch(i, { label: e.target.value })}
                 placeholder="report label (optional)"
-                className="border border-slate-300 rounded-md px-2 py-1 text-sm flex-1"
+                className="border border-slate-300 dark:border-abyss-200/50 rounded-md px-2 py-1 text-sm flex-1"
               />
-              <button onClick={() => removeBranch(i)} className="text-slate-400 hover:text-red-600">
+              <button onClick={() => removeBranch(i)} className="text-slate-400 dark:text-abyss-100 hover:text-red-600">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -566,11 +566,11 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
       ) : (
         node.type !== 'hangup' && (
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Next node</label>
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Next node</label>
             <select
               value={node.next}
               onChange={(e) => onChange({ next: e.target.value })}
-              className="border border-slate-300 rounded-md px-2 py-1 text-sm w-64"
+              className="border border-slate-300 dark:border-abyss-200/50 rounded-md px-2 py-1 text-sm w-64"
             >
               <option value="">(none - ends the call)</option>
               {otherNodes.map((n) => (
@@ -582,15 +582,15 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
       )}
 
       <details className="text-xs">
-        <summary className="cursor-pointer text-slate-500 hover:text-slate-700">Advanced config (JSON)</summary>
+        <summary className="cursor-pointer text-slate-500 dark:text-abyss-50 hover:text-slate-700">Advanced config (JSON)</summary>
         <textarea
           value={node.configText}
           onChange={(e) => onChange({ configText: e.target.value })}
           rows={4}
           spellCheck={false}
-          className="mt-2 w-full border border-slate-300 rounded-md px-3 py-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+          className="mt-2 w-full border border-slate-300 dark:border-abyss-200/50 rounded-md px-3 py-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 dark:focus:ring-neon-cyan/50"
         />
-        <p className="mt-1 text-slate-400">
+        <p className="mt-1 text-slate-400 dark:text-abyss-100">
           {node.type === 'collect_input' && 'e.g. {"max_digits": 10, "min_digits": 10, "terminator": "#", "store_as": "account_number"}'}
           {node.type === 'lookup' && 'source_type/table_id/webhook_url/lookup_key/response_var_prefix are already set by the section above - this is only for anything extra.'}
         </p>

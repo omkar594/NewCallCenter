@@ -49,20 +49,20 @@ export default function OnboardClient() {
   return (
     <div className="max-w-xl space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">Onboard Client</h1>
-        <p className="text-sm text-slate-500">Creates a new isolated tenant, its first admin login, and grants SIM ports - all atomically.</p>
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Onboard Client</h1>
+        <p className="text-sm text-slate-500 dark:text-abyss-50">Creates a new isolated tenant, its first admin login, and grants SIM ports - all atomically.</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4 bg-white border border-slate-200 rounded-lg p-6">
+      <form onSubmit={handleSubmit} className="space-y-4 bg-white dark:bg-abyss-500 border border-slate-200 dark:border-abyss-300/30 rounded-lg p-6">
         <Field label="Tenant name" value={form.tenantName} onChange={update('tenantName')} placeholder="Apex Bank" />
         <Field label="Subdomain" value={form.subdomain} onChange={update('subdomain')} placeholder="apexbank" />
         <Field label="Admin username" value={form.adminUsername} onChange={update('adminUsername')} placeholder="apexbank_admin" />
         <Field label="Admin password" type="password" value={form.adminPassword} onChange={update('adminPassword')} />
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">SIM ports to assign</label>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">SIM ports to assign</label>
           {freePorts.length === 0 ? (
-            <p className="text-sm text-slate-400">No free ports available - free one up first (Gateways & Ports) or expand the gateway.</p>
+            <p className="text-sm text-slate-400 dark:text-abyss-100">No free ports available - free one up first (Gateways & Ports) or expand the gateway.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {freePorts.map((port) => (
@@ -84,12 +84,12 @@ export default function OnboardClient() {
         </div>
 
         {error && (
-          <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
+          <div className="flex items-start gap-2 text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-400/10 rounded-md px-3 py-2">
             <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /> {error}
           </div>
         )}
         {success && (
-          <div className="flex items-start gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-md px-3 py-2">
+          <div className="flex items-start gap-2 text-sm text-emerald-700 dark:text-neon-green bg-emerald-50 dark:bg-neon-green/10 rounded-md px-3 py-2">
             <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
             <span>
               Onboarded <strong>{success.tenant.name}</strong> with ports [{success.ports.join(', ')}].{' '}
@@ -115,11 +115,11 @@ export default function OnboardClient() {
 function Field({ label, ...props }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
+      <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">{label}</label>
       <input
         {...props}
         required
-        className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+        className="w-full border border-slate-300 dark:border-abyss-200/50 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:focus:ring-neon-cyan/50"
       />
     </div>
   );

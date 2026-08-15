@@ -143,10 +143,10 @@ export default function Softphone() {
   if (!loggedIn) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4">
-        <div className="w-full max-w-sm bg-white rounded-xl shadow-xl p-8">
+        <div className="w-full max-w-sm bg-white dark:bg-abyss-500 rounded-xl shadow-xl p-8">
           <div className="flex items-center gap-2 mb-6">
-            <Radio className="w-6 h-6 text-brand-600" />
-            <h1 className="text-lg font-semibold text-slate-900">Agent Softphone</h1>
+            <Radio className="w-6 h-6 text-brand-600 dark:text-neon-cyan" />
+            <h1 className="text-lg font-semibold text-slate-900 dark:text-white">Agent Softphone</h1>
           </div>
           <form onSubmit={handleLogin} className="space-y-4">
             <input
@@ -155,7 +155,7 @@ export default function Softphone() {
               placeholder="Username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              className="w-full border border-slate-300 dark:border-abyss-200/50 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:focus:ring-neon-cyan/50"
             />
             <input
               type="password"
@@ -163,9 +163,9 @@ export default function Softphone() {
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              className="w-full border border-slate-300 dark:border-abyss-200/50 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:focus:ring-neon-cyan/50"
             />
-            {loginError && <p className="text-sm text-red-600">{loginError}</p>}
+            {loginError && <p className="text-sm text-red-600 dark:text-red-300">{loginError}</p>}
             <button type="submit" className="w-full bg-brand-600 hover:bg-brand-700 text-white rounded-md py-2 text-sm font-medium">
               Log in
             </button>
@@ -177,10 +177,10 @@ export default function Softphone() {
 
   return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center px-4">
-      <div className="w-full max-w-sm bg-white rounded-xl shadow-xl p-8 space-y-4">
+      <div className="w-full max-w-sm bg-white dark:bg-abyss-500 rounded-xl shadow-xl p-8 space-y-4">
         <div className="flex items-center gap-2">
-          <Radio className="w-6 h-6 text-brand-600" />
-          <h1 className="text-lg font-semibold text-slate-900">Agent Softphone</h1>
+          <Radio className="w-6 h-6 text-brand-600 dark:text-neon-cyan" />
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-white">Agent Softphone</h1>
         </div>
 
         <div className={`rounded-md px-4 py-2.5 text-sm font-semibold text-center ${online ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
@@ -188,8 +188,8 @@ export default function Softphone() {
         </div>
 
         {incomingCall && (
-          <div className="border-2 border-red-200 bg-red-50 rounded-lg p-4 space-y-3">
-            <p className="text-sm text-slate-700 flex items-center gap-2">
+          <div className="border-2 border-red-200 bg-red-50 dark:bg-red-400/10 rounded-lg p-4 space-y-3">
+            <p className="text-sm text-slate-700 dark:text-slate-200 flex items-center gap-2">
               <PhoneIncoming className="w-4 h-4" /> Incoming call from <strong>{callerId}</strong>
             </p>
             <div className="flex gap-2">
@@ -205,7 +205,7 @@ export default function Softphone() {
 
         {inCall && (
           <div className="space-y-3">
-            <p className="text-sm text-slate-600">On a call...</p>
+            <p className="text-sm text-slate-600 dark:text-slate-300">On a call...</p>
             <button onClick={rejectOrHangup} className="w-full flex items-center justify-center gap-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md py-2 text-sm font-medium">
               <PhoneOff className="w-4 h-4" /> Hang Up
             </button>

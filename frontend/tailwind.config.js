@@ -1,12 +1,40 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  // Toggled via a `dark` class on <html> (see context/ThemeContext.jsx) rather than following
+  // the OS preference, so the user's explicit choice always wins and persists across sessions.
+  darkMode: 'class',
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Montserrat', 'ui-sans-serif', 'system-ui', 'sans-serif']
+        sans: ['Montserrat', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        // Used for dark-mode dashboard surfaces (see Dashboard.jsx) - reads as technical/modern,
+        // matching the neon/glassmorphism reference brief. Light mode keeps plain Montserrat.
+        display: ['"Space Grotesk"', 'ui-sans-serif', 'system-ui', 'sans-serif']
       },
       colors: {
+        // Dark-mode "analytical dashboard" accent palette - glowing electric cyan/purple/green
+        // against deep near-black surfaces, per the neon/glassmorphism reference brief. Only
+        // meant to be used behind dark: variants; the light theme never references these.
+        neon: {
+          cyan: '#00f0ff',
+          purple: '#b026ff',
+          green: '#00ff66'
+        },
+        // Deep dark surfaces for dark-mode backgrounds/panels (glassmorphism cards sit on top of
+        // these with backdrop-blur + low-opacity fills).
+        abyss: {
+          50: '#8892a6',
+          100: '#6b7690',
+          200: '#4d5773',
+          300: '#374057',
+          400: '#252c3d',
+          500: '#171c28',
+          600: '#12151f',
+          700: '#0d0f17',
+          800: '#090a10',
+          900: '#05060a'
+        },
         // Teal - primary interactive color (buttons, links, focus rings) across the whole app.
         brand: {
           50: '#f0f7f6',

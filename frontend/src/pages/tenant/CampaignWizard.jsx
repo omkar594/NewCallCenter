@@ -98,7 +98,7 @@ export default function CampaignWizard() {
   if (success) {
     return (
       <div className="max-w-lg space-y-4">
-        <div className="flex items-start gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-md px-4 py-3">
+        <div className="flex items-start gap-2 text-sm text-emerald-700 dark:text-neon-green bg-emerald-50 dark:bg-neon-green/10 rounded-md px-4 py-3">
           <CheckCircle2 className="w-5 h-5 mt-0.5 shrink-0" />
           <div>
             <p className="font-medium">Campaign created - {success.totalLeads} lead(s), status "{success.status}".</p>
@@ -112,7 +112,7 @@ export default function CampaignWizard() {
           >
             View Campaign
           </button>
-          <button onClick={() => window.location.reload()} className="text-sm text-slate-500 hover:text-slate-700">
+          <button onClick={() => window.location.reload()} className="text-sm text-slate-500 dark:text-abyss-50 hover:text-slate-700">
             Create another
           </button>
         </div>
@@ -122,23 +122,23 @@ export default function CampaignWizard() {
 
   return (
     <div className="max-w-2xl space-y-6 pb-16">
-      <button onClick={() => navigate('/app/campaigns')} className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700">
+      <button onClick={() => navigate('/app/campaigns')} className="inline-flex items-center gap-1 text-sm text-slate-500 dark:text-abyss-50 hover:text-slate-700">
         <ArrowLeft className="w-4 h-4" /> All campaigns
       </button>
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">New Campaign</h1>
-        <p className="text-sm text-slate-500">Run an existing IVR flow, or a classic single-prompt broadcast.</p>
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-white">New Campaign</h1>
+        <p className="text-sm text-slate-500 dark:text-abyss-50">Run an existing IVR flow, or a classic single-prompt broadcast.</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Section title="1. Basics">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Campaign name</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Campaign name</label>
             <input
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              className="w-full border border-slate-300 dark:border-abyss-200/50 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:focus:ring-neon-cyan/50"
             />
           </div>
         </Section>
@@ -156,7 +156,7 @@ export default function CampaignWizard() {
             <select
               value={flowId}
               onChange={(e) => setFlowId(e.target.value)}
-              className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+              className="w-full border border-slate-300 dark:border-abyss-200/50 rounded-md px-3 py-2 text-sm"
             >
               <option value="">Choose a flow</option>
               {flows.map((f) => (
@@ -185,31 +185,31 @@ export default function CampaignWizard() {
                     value={lead.phoneNumber}
                     onChange={(e) => updateLead(i, { phoneNumber: e.target.value })}
                     placeholder="+91XXXXXXXXXX"
-                    className="border border-slate-300 rounded-md px-2 py-1.5 text-sm flex-1"
+                    className="border border-slate-300 dark:border-abyss-200/50 rounded-md px-2 py-1.5 text-sm flex-1"
                   />
                   <input
                     value={lead.customerName}
                     onChange={(e) => updateLead(i, { customerName: e.target.value })}
                     placeholder="Customer name (optional)"
-                    className="border border-slate-300 rounded-md px-2 py-1.5 text-sm flex-1"
+                    className="border border-slate-300 dark:border-abyss-200/50 rounded-md px-2 py-1.5 text-sm flex-1"
                   />
                   <select
                     value={lead.languageCode}
                     onChange={(e) => updateLead(i, { languageCode: e.target.value })}
-                    className="border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+                    className="border border-slate-300 dark:border-abyss-200/50 rounded-md px-2 py-1.5 text-sm"
                   >
                     {LANGUAGES.map((l) => (
                       <option key={l.code} value={l.code}>{l.label}</option>
                     ))}
                   </select>
                   {leads.length > 1 && (
-                    <button type="button" onClick={() => removeLead(i)} className="text-slate-400 hover:text-red-600">
+                    <button type="button" onClick={() => removeLead(i)} className="text-slate-400 dark:text-abyss-100 hover:text-red-600">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   )}
                 </div>
               ))}
-              <button type="button" onClick={addLead} className="flex items-center gap-1.5 text-sm text-brand-600 hover:underline">
+              <button type="button" onClick={addLead} className="flex items-center gap-1.5 text-sm text-brand-600 dark:text-neon-cyan hover:underline">
                 <Plus className="w-4 h-4" /> Add another number
               </button>
             </div>
@@ -220,7 +220,7 @@ export default function CampaignWizard() {
 
         <Section title="4. Which SIM ports?">
           {ownedPorts.length === 0 ? (
-            <p className="text-sm text-slate-500">No ports specifically allocated to you - this campaign will use whatever's available.</p>
+            <p className="text-sm text-slate-500 dark:text-abyss-50">No ports specifically allocated to you - this campaign will use whatever's available.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {ownedPorts.map((port) => (
@@ -243,25 +243,25 @@ export default function CampaignWizard() {
 
         <Section title="5. Retry unanswered calls?">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Retry attempts</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Retry attempts</label>
             <select
               value={retryCount}
               onChange={(e) => setRetryCount(Number(e.target.value))}
-              className="w-full sm:w-56 border border-slate-300 rounded-md px-3 py-2 text-sm"
+              className="w-full sm:w-56 border border-slate-300 dark:border-abyss-200/50 rounded-md px-3 py-2 text-sm"
             >
               <option value={0}>No retry</option>
               <option value={1}>1</option>
               <option value={2}>2</option>
               <option value={3}>3</option>
             </select>
-            <p className="text-xs text-slate-500 mt-1.5">
+            <p className="text-xs text-slate-500 dark:text-abyss-50 mt-1.5">
               How many extra tries a number gets if it's busy, doesn't answer, or fails to connect - never applies once a call actually connects.
             </p>
           </div>
         </Section>
 
         {error && (
-          <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
+          <div className="flex items-start gap-2 text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-400/10 rounded-md px-3 py-2">
             <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /> {error}
           </div>
         )}
@@ -280,8 +280,8 @@ export default function CampaignWizard() {
 
 function Section({ title, children }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-3">
-      <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+    <div className="bg-white dark:bg-abyss-500 border border-slate-200 dark:border-abyss-300/30 rounded-lg p-5 space-y-3">
+      <h2 className="text-sm font-semibold text-slate-900 dark:text-white">{title}</h2>
       {children}
     </div>
   );
