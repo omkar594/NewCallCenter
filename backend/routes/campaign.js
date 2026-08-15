@@ -3,8 +3,9 @@ import multer from 'multer';
 import os from 'os';
 import fs from 'fs';
 import path from 'path';
-import { getCampaigns, getLiveCalls, getCampaignReport, exportCampaignLeadsCsv, pauseCampaign, resumeCampaign, createBroadcastCampaign, handleCampaignCallback, handleOptOutWebhook } from '../controllers/campaignController.js';
+import { getCampaigns, getLiveCalls, getCampaignReport, exportCampaignLeadsCsv, pauseCampaign, resumeCampaign, createBroadcastCampaign, handleOptOutWebhook } from '../controllers/campaignController.js';
 import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
+import { requireWebhookSecret } from '../middleware/webhookAuth.js';
 
 const AUDIO_FIELDS = new Set(['broadcastAudio', 'audioFile', 'audio', 'file']);
 const CSV_FIELDS = new Set(['leadsCsv', 'csv']);
@@ -72,15 +73,11 @@ router.get('/live-calls', requireCampaignAccess, getLiveCalls);
 // 2. Create new Outbound Voice Broadcast Campaign
 router.post('/broadcast', requireCampaignAccess, optionalUpload, createBroadcastCampaign);
 
-// 3. Webhook for Asterisk dialplan to report call status - deliberately zero-auth (see above).
-// MUST be registered before '/:id' or Express matches it as a campaign id lookup instead
-// (see server.js history for the bug this fixes).
-router.get('/callback', handleCampaignCallback);
-
-// 3b. Workstream 7: DTMF-9 opt-out webhook, hit via CURL() from the dialplan the same way
-// /callback is - GET with a query string, since func_curl defaults to GET. Also registered
-// before '/:id' for the same route-shadowing reason as above, and deliberately zero-auth too.
-router.get('/optout', handleOptOutWebhook);
+// 3. Workstream 7: DTMF-9 opt-out webhook, hit via CURL() from the dialplan - GET with a query
+// string, since func_curl defaults to GET. Deliberately zero-JWT-auth: Asterisk has no way to
+// carry a bearer token - requireWebhookSecret is the actual gate here (see middleware/webhookAuth.js).
+// Registered before '/:id' so Express never matches "optout" as a campaign id.
+router.get('/optout', requireWebhookSecret, handleOptOutWebhook);
 
 // 4. Get campaign detailed status & call progress
 router.get('/:id', requireCampaignAccess, getCampaignReport);

@@ -18,6 +18,7 @@ import ariService from './services/ariService.js';
 import spamService from './services/spamService.js';
 import routingService from './services/routingService.js';
 import { resyncAllIdleAgents } from './services/queueMembershipService.js';
+import { requireWebhookSecret } from './middleware/webhookAuth.js';
 import { executeTenantQuery } from './config/database.js';
 
 // Import routes
@@ -513,10 +514,16 @@ initSchema();
 /**
  * Endpoint for Asterisk to verify inbound caller details and initiate ACD routing.
  * Triggers when Dinstar pushes calls to Asterisk.
- * 
+ *
  * Route: POST /api/voice/incoming-filter
+ *
+ * Not found referenced anywhere in telephony_config/ or the frontend during a full route audit -
+ * possibly wired up directly in a dialplan customization that lives only on the EC2 box, outside
+ * this repo (same class of thing as the piper-wrapper.sh script), so left in place rather than
+ * removed outright like the confirmed-dead /api/campaigns/callback. Gated by
+ * requireWebhookSecret regardless, same as /optout - see middleware/webhookAuth.js.
  */
-app.post('/api/voice/incoming-filter', async (req, res) => {
+app.post('/api/voice/incoming-filter', requireWebhookSecret, async (req, res) => {
   const { callerNumber, trunkName } = req.body;
 
   if (!callerNumber || !trunkName) {
@@ -571,11 +578,6 @@ app.post('/api/voice/incoming-filter', async (req, res) => {
     res.status(500).json({ error: 'Internal server error handling inbound call' });
   }
 });
-
-// NOTE: the /api/campaigns/callback webhook now lives in routes/campaign.js, mounted
-// BEFORE the '/:id' route - it used to be registered here, after '/api/campaigns' was
-// already mounted, so Express matched it as GET /api/campaigns/:id with id='callback'
-// and it was silently unreachable. See routes/campaign.js and campaignController.js.
 
 // App health check
 app.get('/health', async (req, res) => {

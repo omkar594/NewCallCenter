@@ -101,31 +101,6 @@ async function insertCampaignLeads(campaignId, leads, tenantId) {
   }
 }
 
-// Webhook for Asterisk dialplan to report voice campaign call status updates.
-// Moved here (and mounted before '/:id' in routes/campaign.js) to fix a route-shadowing
-// bug where Express matched this as GET /api/campaigns/:id with id='callback'.
-export async function handleCampaignCallback(req, res) {
-  const { leadId, status, duration } = req.query;
-
-  if (!leadId || !status) {
-    return res.status(400).send('Missing leadId or status');
-  }
-
-  try {
-    await pool.query(`
-      UPDATE campaign_leads
-      SET dial_status = $1, call_duration = $2, updated_at = NOW()
-      WHERE id = $3
-    `, [status, parseInt(duration) || 0, leadId]);
-
-    console.log(`[Campaign Callback] Lead ID: ${leadId} status updated to: ${status}`);
-    res.send('OK');
-  } catch (error) {
-    console.error('[Campaign Callback] Database update failed:', error.message);
-    res.status(500).send(error.message);
-  }
-}
-
 // Workstream 7: hit via CURL() from the dialplan's DTMF-9 branch. Must respond fast - the
 // caller's channel is blocked on this CURL() before it can play the confirmation prompt and
 // hang up, so func_curl's timeout option on the dialplan side is what protects the caller if
