@@ -337,6 +337,10 @@ async function initSchema() {
       );
       CREATE INDEX IF NOT EXISTS idx_credit_transactions_tenant ON credit_transactions(tenant_id, created_at DESC);
 
+      -- Bumped on logout to revoke every JWT issued for this account, even ones not yet expired -
+      -- see authController.js's login()/logout() and middleware/auth.js's per-request check.
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
+
       -- Counts only genuine busy/no-answer/failed OUTCOMES (never the instant gateway-capacity
       -- "no line free right now" requeue, which reuses campaign_leads.attempts for a completely
       -- different purpose) - see bulkCampaignWorker.js's finalizeLead. Keeps a campaign owner's

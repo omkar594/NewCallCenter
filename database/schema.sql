@@ -46,6 +46,7 @@ CREATE TABLE users (
     role VARCHAR(50) NOT NULL CHECK (role IN ('super_admin', 'client_admin', 'mentor', 'team_leader', 'agent')),
     parent_id UUID REFERENCES users(id) ON DELETE SET NULL, -- Maps Agent to TL, TL to Mentor, Mentor to Client Admin
     status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+    token_version INTEGER NOT NULL DEFAULT 0, -- bumped on logout to revoke every JWT issued before it, even ones not yet expired - see authController.js/middleware/auth.js
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

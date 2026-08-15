@@ -18,6 +18,11 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(() => {
+    // Best-effort: bumps token_version server-side (see authController.js) so this token - and
+    // any other still-unexpired token for this account - is rejected everywhere immediately,
+    // not just cleared from this browser. Local logout must still happen even if this fails
+    // (offline, token already expired) - fired without awaiting so it never blocks that.
+    apiPost('/api/auth/logout').catch(() => {});
     setStoredAuth(null);
     setAuth(null);
   }, []);

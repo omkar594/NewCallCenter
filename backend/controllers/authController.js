@@ -16,7 +16,7 @@ export async function login(req, res) {
   try {
     // Look up user globally (Super Admin check requires no tenant ID filtering at query start)
     const userResult = await executeTenantQuery(null, `
-      SELECT u.id, u.username, u.password_hash, u.role, u.tenant_id, u.parent_id, u.status, t.name as tenant_name 
+      SELECT u.id, u.username, u.password_hash, u.role, u.tenant_id, u.parent_id, u.status, u.token_version, t.name as tenant_name
       FROM users u
       LEFT JOIN tenants t ON t.id = u.tenant_id
       WHERE u.username = $1
@@ -49,14 +49,18 @@ export async function login(req, res) {
       syncAgentQueueMembership(user.id, 'login').catch(() => {});
     }
 
-    // Generate JWT token containing roles, parent report hierarchy and tenant mapping
+    // Generate JWT token containing roles, parent report hierarchy and tenant mapping.
+    // tokenVersion lets logout() revoke this token server-side before its 12h expiry - see
+    // middleware/auth.js, which rejects any token whose tokenVersion doesn't match the account's
+    // current value.
     const token = jwt.sign(
       {
         id: user.id,
         tenant_id: user.tenant_id,
         username: user.username,
         role: user.role,
-        parent_id: user.parent_id
+        parent_id: user.parent_id,
+        tokenVersion: user.token_version
       },
       process.env.JWT_SECRET,
       { expiresIn: '12h' }
@@ -82,8 +86,14 @@ export async function login(req, res) {
 
 export async function logout(req, res) {
   const { id, role, tenant_id } = req.user;
-  
+
   try {
+    // Bumps token_version so EVERY token issued for this account - not just the one used to
+    // call this endpoint - is rejected on its next use, even if not yet expired (see
+    // middleware/auth.js). "Log out" means log out everywhere, matching what a security-
+    // conscious user expects, rather than just clearing this one browser's local copy.
+    await pool.query('UPDATE users SET token_version = token_version + 1 WHERE id = $1', [id]);
+
     if (role === 'agent') {
       // Set agent profile status to offline
       await executeTenantQuery(tenant_id, `
