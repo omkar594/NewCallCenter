@@ -41,3 +41,18 @@ html.dark body {
     @apply text-slate-400 dark:text-abyss-100;
   }
 }
+
+/* "Glowing smooth spline" charts (see pages/tenant/Dashboard.jsx, superadmin/Dashboard.jsx) -
+   recharts renders each Line as an SVG <path class="recharts-line-curve">; a CSS drop-shadow on
+   that path is a more reliable cross-browser glow than recharts' own <filter> plumbing. Scoped to
+   dark mode only (a glow reads as noise on a white background) and to a wrapper class per accent
+   color so multiple differently-colored lines in the same chart glow correctly. */
+html.dark .chart-glow-cyan .recharts-line-curve {
+  filter: drop-shadow(0 0 6px rgba(0, 240, 255, 0.7));
+}
+html.dark .chart-glow-green .recharts-line-curve {
+  filter: drop-shadow(0 0 6px rgba(0, 255, 102, 0.7));
+}
+html.dark .chart-glow-purple .recharts-line-curve {
+  filter: drop-shadow(0 0 6px rgba(176, 38, 255, 0.7));
+}

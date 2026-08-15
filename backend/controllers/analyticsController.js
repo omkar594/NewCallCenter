@@ -123,6 +123,72 @@ export async function getCallLogs(req, res) {
   }
 }
 
+// Tenant Dashboard overview: credit balance history, per-campaign progress, call-outcome
+// breakdown, and a daily trend - the same shape of data as getAdminOverview below but scoped to
+// the caller's own tenant (req.tenantId, guaranteed set by injectTenantContext for these roles).
+export async function getTenantOverview(req, res) {
+  const tenantId = req.tenantId;
+
+  try {
+    const [balanceResult, creditHistoryResult, campaignsResult, outcomeResult, trendResult] = await Promise.all([
+      executeTenantQuery(tenantId, `SELECT credit_balance FROM tenants WHERE id = $1`, [tenantId]),
+      // One point per day - the last balance snapshot that day - rather than every individual
+      // transaction, so a campaign with thousands of per-call deductions still renders a clean
+      // 14-point line instead of an unreadable sawtooth.
+      executeTenantQuery(tenantId, `
+        SELECT DISTINCT ON (DATE(created_at)) DATE(created_at) AS day, balance_after
+        FROM credit_transactions
+        WHERE tenant_id = $1 AND created_at >= NOW() - INTERVAL '14 days'
+        ORDER BY DATE(created_at), created_at DESC
+      `, [tenantId]),
+      executeTenantQuery(tenantId, `
+        SELECT name, status, total_leads, processed_leads
+        FROM voice_campaigns
+        WHERE tenant_id = $1
+        ORDER BY created_at DESC
+        LIMIT 8
+      `, [tenantId]),
+      executeTenantQuery(tenantId, `
+        SELECT cl.dial_status, COUNT(*)::int AS count
+        FROM campaign_leads cl
+        JOIN voice_campaigns vc ON vc.id = cl.campaign_id
+        WHERE vc.tenant_id = $1
+        GROUP BY cl.dial_status
+      `, [tenantId]),
+      executeTenantQuery(tenantId, `
+        SELECT DATE(cl.updated_at) AS day,
+               COUNT(*) FILTER (WHERE cl.dial_status = 'answered')::int AS answered,
+               COUNT(*) FILTER (WHERE cl.dial_status IN ('busy', 'failed', 'no-answer'))::int AS rejected
+        FROM campaign_leads cl
+        JOIN voice_campaigns vc ON vc.id = cl.campaign_id
+        WHERE vc.tenant_id = $1
+          AND cl.dial_status IN ('answered', 'busy', 'failed', 'no-answer')
+          AND cl.updated_at >= NOW() - INTERVAL '14 days'
+        GROUP BY DATE(cl.updated_at)
+        ORDER BY day
+      `, [tenantId])
+    ]);
+
+    const outcomeCounts = { pending: 0, processing: 0, answered: 0, busy: 0, failed: 0, 'no-answer': 0, opted_out: 0 };
+    for (const row of outcomeResult.rows) {
+      if (row.dial_status in outcomeCounts) outcomeCounts[row.dial_status] = row.count;
+    }
+    const totalDialed = outcomeCounts.answered + outcomeCounts.busy + outcomeCounts.failed + outcomeCounts['no-answer'];
+
+    res.json({
+      creditBalance: balanceResult.rows[0]?.credit_balance ?? 0,
+      creditHistory: creditHistoryResult.rows.map((r) => ({ day: r.day, balance: r.balance_after })),
+      campaigns: campaignsResult.rows,
+      totalDialed,
+      outcomeCounts,
+      dailyTrend: trendResult.rows.map((r) => ({ day: r.day, answered: r.answered, rejected: r.rejected }))
+    });
+  } catch (error) {
+    console.error('getTenantOverview failed:', error);
+    res.status(500).json({ error: 'Failed to compile tenant overview' });
+  }
+}
+
 // Super Admin's dashboard overview: platform-wide totals + call-outcome breakdown + a daily
 // call-volume trend, all sourced from campaign_leads/voice_campaigns (the actual outbound
 // broadcast system this app runs) - deliberately NOT the `calls` table getCallLogs above uses,
