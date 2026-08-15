@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Radio, AlertCircle, PhoneCall, Workflow, ShieldCheck, Lock, User, Activity, Wifi } from 'lucide-react';
+import { Radio, AlertCircle, PhoneCall, Workflow, ShieldCheck, Lock, User, Activity, Wifi, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { homeForRole } from '../components/ProtectedRoute.jsx';
 import PlexusBackground from '../components/PlexusBackground.jsx';
@@ -174,15 +174,18 @@ export default function Login({ variant = 'client' }) {
                 {submitting ? 'Signing in…' : 'Log in'}
               </button>
             </form>
+
+            <Link
+              to={OTHER_PORTAL[variant].path}
+              className="mt-3 w-full flex items-center justify-center gap-1.5 border border-brand-200 text-brand-700 hover:bg-brand-50 hover:border-brand-300 rounded-lg py-2.5 text-sm font-medium transition-colors"
+            >
+              {OTHER_PORTAL[variant].label}
+              <ArrowRight className="w-4 h-4" />
+            </Link>
           </div>
 
           <p className="text-center text-xs text-slate-400 lg:text-ink-400 mt-6">
             Secured multi-tenant access · CallCenter Console
-          </p>
-          <p className="text-center text-xs mt-2">
-            <Link to={OTHER_PORTAL[variant].path} className="text-brand-300 lg:text-brand-600 hover:underline">
-              {OTHER_PORTAL[variant].label} →
-            </Link>
           </p>
         </div>
       </div>
