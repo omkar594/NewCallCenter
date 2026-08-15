@@ -73,7 +73,15 @@ async function request(path, { method = 'GET', body, headers = {} } = {}) {
     body: finalBody
   });
 
-  if (res.status === 401) {
+  // /api/auth/login is the one endpoint where a 401 never means "your session died" - it means
+  // invalid credentials, which must flow through to the normal error path below so the login
+  // form's catch block can show it. Excluding it by path (not just "was a token attached") also
+  // covers a stale/leftover token still sitting in storage from a previous session while
+  // attempting a fresh login - login() doesn't consume that token to decide its response at all,
+  // so its presence is irrelevant here. Treating every 401 as a dead session made the login form
+  // hang on "Signing in..." forever on a wrong password/portal, since handleUnauthorized() never
+  // resolves.
+  if (res.status === 401 && path !== '/api/auth/login') {
     return handleUnauthorized();
   }
 
@@ -106,7 +114,7 @@ export async function apiPostAudioBlob(path, body) {
     body: JSON.stringify(body)
   });
 
-  if (res.status === 401) {
+  if (res.status === 401 && token) {
     return handleUnauthorized();
   }
   if (!res.ok) {
@@ -127,7 +135,7 @@ export async function apiDownload(path, filename) {
 
   const res = await fetch(`${resolveApiBaseUrl()}${path}`, { headers: finalHeaders });
 
-  if (res.status === 401) {
+  if (res.status === 401 && token) {
     return handleUnauthorized();
   }
   if (!res.ok) {
