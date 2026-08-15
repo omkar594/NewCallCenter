@@ -1,4 +1,4 @@
-import { executeTenantQuery } from '../config/database.js';
+import pool, { executeTenantQuery } from '../config/database.js';
 
 // Get comprehensive live stats dashboard for Client Admin & Team Leaders
 export async function getLiveMetrics(req, res) {
@@ -120,5 +120,65 @@ export async function getCallLogs(req, res) {
   } catch (error) {
     console.error('getCallLogs failed:', error);
     res.status(500).json({ error: 'Failed to retrieve call logs' });
+  }
+}
+
+// Super Admin's dashboard overview: platform-wide totals + call-outcome breakdown + a daily
+// call-volume trend, all sourced from campaign_leads/voice_campaigns (the actual outbound
+// broadcast system this app runs) - deliberately NOT the `calls` table getCallLogs above uses,
+// which is a separate, architecturally-unrelated inbound/agent-desk flow. pool.query (not
+// executeTenantQuery) throughout since every query here is intentionally cross-tenant.
+export async function getAdminOverview(req, res) {
+  try {
+    const [tenantsResult, campaignsResult, outcomeResult, trendResult, topTenantsResult] = await Promise.all([
+      pool.query(`SELECT COUNT(*)::int AS count FROM tenants WHERE status = 'active'`),
+      pool.query(`SELECT COUNT(*)::int AS count FROM voice_campaigns`),
+      pool.query(`
+        SELECT dial_status, COUNT(*)::int AS count
+        FROM campaign_leads
+        GROUP BY dial_status
+      `),
+      // Daily call-volume trend for the line chart - only genuine dialed OUTCOMES (a lead that's
+      // still 'pending'/'processing' hasn't been dialed to completion yet, so it's excluded the
+      // same way finalizeLead's connect_attempts logic treats those as not-yet-real-attempts).
+      pool.query(`
+        SELECT DATE(updated_at) AS day,
+               COUNT(*) FILTER (WHERE dial_status = 'answered')::int AS answered,
+               COUNT(*) FILTER (WHERE dial_status IN ('busy', 'failed', 'no-answer'))::int AS rejected
+        FROM campaign_leads
+        WHERE dial_status IN ('answered', 'busy', 'failed', 'no-answer')
+          AND updated_at >= NOW() - INTERVAL '14 days'
+        GROUP BY DATE(updated_at)
+        ORDER BY day
+      `),
+      pool.query(`
+        SELECT t.name, COUNT(cl.id)::int AS dialed
+        FROM campaign_leads cl
+        JOIN voice_campaigns vc ON vc.id = cl.campaign_id
+        JOIN tenants t ON t.id = vc.tenant_id
+        WHERE cl.dial_status IN ('answered', 'busy', 'failed', 'no-answer')
+        GROUP BY t.name
+        ORDER BY dialed DESC
+        LIMIT 5
+      `)
+    ]);
+
+    const outcomeCounts = { pending: 0, processing: 0, answered: 0, busy: 0, failed: 0, 'no-answer': 0, opted_out: 0 };
+    for (const row of outcomeResult.rows) {
+      if (row.dial_status in outcomeCounts) outcomeCounts[row.dial_status] = row.count;
+    }
+    const totalDialed = outcomeCounts.answered + outcomeCounts.busy + outcomeCounts.failed + outcomeCounts['no-answer'];
+
+    res.json({
+      totalTenants: tenantsResult.rows[0].count,
+      totalCampaigns: campaignsResult.rows[0].count,
+      totalDialed,
+      outcomeCounts,
+      dailyTrend: trendResult.rows.map((r) => ({ day: r.day, answered: r.answered, rejected: r.rejected })),
+      topTenants: topTenantsResult.rows
+    });
+  } catch (error) {
+    console.error('getAdminOverview failed:', error);
+    res.status(500).json({ error: 'Failed to compile admin overview' });
   }
 }

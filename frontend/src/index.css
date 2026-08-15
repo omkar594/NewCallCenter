@@ -13,3 +13,31 @@ body {
 html.dark body {
   background-color: #05060a;
 }
+
+/* Without an explicit color-scheme, some browsers apply their own native dark styling to form
+   controls based on the OS's prefers-color-scheme - independent of (and inconsistent with)
+   Tailwind's class-based dark mode here. That mismatch is what caused illegible/invisible
+   placeholder text: the browser could render an input with a dark native background while
+   Tailwind's own classes assumed a light one (or vice versa). Declaring color-scheme explicitly
+   per mode keeps native form-control chrome in sync with the actual theme.
+   Every input/select/textarea also gets an explicit dark background/text/placeholder here in one
+   place, rather than requiring every page's markup to repeat it, so this fix reaches all of them
+   at once ("every place holder... everywhere" - the input's own classes, if any, still win via
+   normal cascade specificity since these are base-layer defaults). */
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  input,
+  select,
+  textarea {
+    @apply dark:bg-abyss-400 dark:text-white dark:border-abyss-200/50;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    @apply text-slate-400 dark:text-abyss-100;
+  }
+}
