@@ -89,7 +89,7 @@ export default function Login({ variant = 'client' }) {
         <div
           className="hidden lg:block pointer-events-none absolute inset-0"
           style={{
-            backgroundImage: 'radial-gradient(circle, rgba(78,148,143,0.35) 1px, transparent 1px)',
+            backgroundImage: 'radial-gradient(circle, rgba(78,148,143,0.50) 1px, transparent 1px)',
             backgroundSize: '28px 28px'
           }}
         />
