@@ -196,11 +196,19 @@ function runPiperRemote(text, modelFile, languageCode) {
  * sample rate varies per model, so it still gets normalized to 8kHz/16-bit mono like every
  * other prompt rather than assuming it already matches. Returns the extension-less basename to
  * use in `sound:campaign_audio/<basename>`.
+ *
+ * `returnBuffer: true` (used by the FlowEditor's pronunciation-preview endpoint) also returns
+ * the transcoded WAV bytes alongside the basename, so a flow author can hear exactly what the
+ * caller will hear - and since this still goes through the same cache/delivery path, previewing
+ * a phrase also warms the cache for the campaign that uses it later, skipping re-synthesis at
+ * "preparing" time. A cache hit alone can't satisfy `returnBuffer` (the earlier transcoded file
+ * was already deleted), so that case re-synthesizes rather than serving stale bytes - a cost
+ * only a preview call pays, never the hot call-answering path.
  */
-export async function synthesizeAndDeliver(text, { languageCode = DEFAULT_LANGUAGE_CODE } = {}) {
+export async function synthesizeAndDeliver(text, { languageCode = DEFAULT_LANGUAGE_CODE, returnBuffer = false } = {}) {
   const modelFile = resolveModelFile(languageCode);
   const hash = contentHash(text, modelFile);
-  if (synthesisCache.has(hash)) {
+  if (!returnBuffer && synthesisCache.has(hash)) {
     return synthesisCache.get(hash);
   }
 
@@ -214,9 +222,10 @@ export async function synthesizeAndDeliver(text, { languageCode = DEFAULT_LANGUA
   const wavBuffer = await runPiperRemote(text, modelFile, languageCode);
   fs.writeFileSync(rawPath, wavBuffer);
 
-  let basename;
+  let basename, audioBuffer;
   try {
     await transcodeCampaignAudio(rawPath, outputPath);
+    if (returnBuffer) audioBuffer = fs.readFileSync(outputPath);
     basename = await deliverCampaignAudio(outputPath);
   } finally {
     fs.unlink(rawPath, () => {});
@@ -224,5 +233,5 @@ export async function synthesizeAndDeliver(text, { languageCode = DEFAULT_LANGUA
   }
 
   synthesisCache.set(hash, basename);
-  return basename;
+  return returnBuffer ? { basename, audioBuffer } : basename;
 }

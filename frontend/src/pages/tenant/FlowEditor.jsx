@@ -1,12 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash2, AlertCircle, CheckCircle2, UploadCloud } from 'lucide-react';
-import { apiGet, apiPost, apiPut } from '../../api/client.js';
+import { ArrowLeft, Plus, Trash2, AlertCircle, CheckCircle2, UploadCloud, Play, Languages, Loader2 } from 'lucide-react';
+import { apiGet, apiPost, apiPut, apiPostAudioBlob } from '../../api/client.js';
 
 const NODE_TYPES = ['play', 'menu', 'collect_input', 'lookup', 'branch', 'transfer_queue', 'sms', 'optout', 'amd_check', 'hangup'];
 const PROMPT_TYPES = new Set(['play', 'menu', 'collect_input', 'optout']);
 const PROMPT_REQUIRED_TYPES = new Set(['play', 'menu']);
 const BRANCH_TYPES = new Set(['menu', 'lookup', 'branch', 'amd_check']);
+// Matches the languages Piper actually has voice models for (see backend .env.example's
+// PIPER_VOICE_MODELS) - a flow node has no language of its own (that's set per-lead at campaign
+// time), so this is purely for the preview/transliterate tools below to know which voice/script
+// to target while authoring.
+const TTS_LANGUAGES = [
+  { code: 'en-US', label: 'English' },
+  { code: 'hi-IN', label: 'Hindi' },
+  { code: 'mr-IN', label: 'Marathi' }
+];
+// Only hi-IN/mr-IN need Latin-to-native-script transliteration - see utils/transliteration.js.
+const TRANSLITERATABLE_LANGUAGES = new Set(['hi-IN', 'mr-IN']);
 
 let localIdCounter = 0;
 const newLocalId = () => `new-${Date.now()}-${localIdCounter++}`;
@@ -21,7 +32,11 @@ function blankNode(isFirst) {
     prompt_id: '',
     next: '',
     branches: [],
-    configText: '{}'
+    configText: '{}',
+    // UI-only, authoring-time state - which voice/script the preview and transliterate tools
+    // below target. Never sent to the backend (see handleSave's payload, which picks fields
+    // explicitly).
+    previewLanguage: 'hi-IN'
   };
 }
 
@@ -40,7 +55,8 @@ function nodesFromServer(serverNodes) {
     prompt_id: n.prompt_id || '',
     next: n.next || '',
     branches: n.branches ? Object.entries(n.branches).map(([matchValue, b]) => ({ matchValue, target: b.target, label: b.label || '' })) : [],
-    configText: JSON.stringify(n.config || {}, null, 2)
+    configText: JSON.stringify(n.config || {}, null, 2),
+    previewLanguage: 'hi-IN'
   }));
 }
 
@@ -213,7 +229,65 @@ export default function FlowEditor() {
 function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRemove }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [previewing, setPreviewing] = useState(false);
+  const [transliterating, setTransliterating] = useState(false);
+  const [ttsToolError, setTtsToolError] = useState('');
+  // Shown as a separate suggestion, not auto-applied - the author's original typed text stays
+  // untouched in the textarea until they explicitly click "Use this text".
+  const [transliterationSuggestion, setTransliterationSuggestion] = useState('');
+  const audioRef = useRef(null);
   const otherNodes = allNodes.filter((n) => n.client_id !== node.client_id);
+
+  // Synthesizes and plays the prompt right here, so a flow author can check pronunciation
+  // without a live test call. This hits the exact same synthesis path a real campaign call
+  // does, so it also warms the backend's in-memory TTS cache for this text+language - a
+  // campaign created afterward with this same prompt skips re-synthesizing at "preparing" time
+  // (as long as the backend process hasn't restarted since).
+  const handlePreview = async () => {
+    setTtsToolError('');
+    setPreviewing(true);
+    try {
+      const blob = await apiPostAudioBlob('/api/ivr/preview-tts', {
+        text: node.prompt_text,
+        languageCode: node.previewLanguage
+      });
+      const url = URL.createObjectURL(blob);
+      if (audioRef.current) {
+        audioRef.current.src = url;
+        await audioRef.current.play();
+      }
+    } catch (err) {
+      setTtsToolError(err.message);
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
+  // Converts whatever's typed (usually Hinglish) into the target language's native script -
+  // Piper's phonemizer expects that, not a Latin transliteration. Shown as a separate suggestion
+  // below the textarea (see transliterationSuggestion) rather than silently overwriting what the
+  // author typed - they compare the two and explicitly opt in via "Use this text".
+  const handleTransliterate = async () => {
+    setTtsToolError('');
+    setTransliterationSuggestion('');
+    setTransliterating(true);
+    try {
+      const { transliterated } = await apiPost('/api/ivr/transliterate', {
+        text: node.prompt_text,
+        languageCode: node.previewLanguage
+      });
+      setTransliterationSuggestion(transliterated);
+    } catch (err) {
+      setTtsToolError(err.message);
+    } finally {
+      setTransliterating(false);
+    }
+  };
+
+  const applyTransliteration = () => {
+    onChange({ prompt_text: transliterationSuggestion });
+    setTransliterationSuggestion('');
+  };
 
   const handleAudioUpload = async (file) => {
     setUploadError('');
@@ -293,13 +367,67 @@ function NodeCard({ node, index, allNodes, onChange, onRemove, onSetStart, canRe
             {PROMPT_REQUIRED_TYPES.has(node.type) && <span className="text-slate-400">(required for {node.type})</span>}
           </div>
           {node.promptMode === 'text' ? (
-            <textarea
-              value={node.prompt_text}
-              onChange={(e) => onChange({ prompt_text: e.target.value })}
-              placeholder="Press 1 to check your balance. Press 9 to end this call. Use {{variable}} for values set earlier in the flow."
-              rows={2}
-              className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
+            <div className="space-y-2">
+              <textarea
+                value={node.prompt_text}
+                onChange={(e) => onChange({ prompt_text: e.target.value })}
+                placeholder="Press 1 to check your balance. Press 9 to end this call. Use {{variable}} for values set earlier in the flow."
+                rows={2}
+                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={node.previewLanguage}
+                  onChange={(e) => onChange({ previewLanguage: e.target.value })}
+                  className="border border-slate-300 rounded-md px-2 py-1 text-xs text-slate-600"
+                >
+                  {TTS_LANGUAGES.map((l) => (
+                    <option key={l.code} value={l.code}>{l.label}</option>
+                  ))}
+                </select>
+                {TRANSLITERATABLE_LANGUAGES.has(node.previewLanguage) && (
+                  <button
+                    type="button"
+                    onClick={handleTransliterate}
+                    disabled={transliterating || !node.prompt_text.trim()}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-md px-2 py-1 disabled:opacity-50"
+                  >
+                    {transliterating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Languages className="w-3 h-3" />}
+                    Suggest {node.previewLanguage === 'mr-IN' ? 'Marathi script' : 'Devanagari'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handlePreview}
+                  disabled={previewing || !node.prompt_text.trim()}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-md px-2 py-1 disabled:opacity-50"
+                >
+                  {previewing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                  Preview
+                </button>
+                <audio ref={audioRef} className="hidden" />
+              </div>
+              {transliterationSuggestion && (
+                <div className="flex items-start gap-2 bg-brand-50 border border-brand-200 rounded-md px-3 py-2">
+                  <p className="flex-1 text-sm text-slate-800">{transliterationSuggestion}</p>
+                  <button
+                    type="button"
+                    onClick={applyTransliteration}
+                    className="shrink-0 text-xs font-medium text-brand-700 hover:text-brand-800 underline"
+                  >
+                    Use this text
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTransliterationSuggestion('')}
+                    className="shrink-0 text-xs text-slate-400 hover:text-slate-600"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+              {ttsToolError && <p className="text-xs text-red-600">{ttsToolError}</p>}
+            </div>
           ) : (
             <div>
               <label className="flex items-center gap-2 border-2 border-dashed border-slate-300 rounded-md px-3 py-2 text-sm cursor-pointer hover:border-brand-500">

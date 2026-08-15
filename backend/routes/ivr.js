@@ -9,7 +9,9 @@ import {
   activateFlow,
   uploadLookupTable,
   getLookupTable,
-  uploadPromptAudio
+  uploadPromptAudio,
+  previewPromptTts,
+  transliteratePrompt
 } from '../controllers/ivrController.js';
 import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 
@@ -65,6 +67,12 @@ router.get('/flows', listFlows);
 router.put('/flows/:id', updateFlow);
 router.get('/flows/:id', getFlow);
 router.post('/flows/:id/activate', activateFlow);
+
+// FlowEditor authoring helpers: hear a prompt_text node's pronunciation before saving, and
+// convert Hinglish typing to native script for languages where Piper needs it (see ttsService.js
+// and utils/transliteration.js).
+router.post('/preview-tts', previewPromptTts);
+router.post('/transliterate', transliteratePrompt);
 
 router.post('/lookup-tables', uploadCsv, uploadLookupTable);
 router.get('/lookup-tables/:id', getLookupTable);

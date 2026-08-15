@@ -5,6 +5,8 @@ import { parse as parseCsv } from 'csv-parse/sync';
 import pool from '../config/database.js';
 import { transcodeCampaignAudio } from '../services/audioTranscoder.js';
 import { deliverCampaignAudio } from '../services/audioDeliveryService.js';
+import { synthesizeAndDeliver } from '../services/ttsService.js';
+import { transliterateToNativeScript, supportsTransliteration } from '../utils/transliteration.js';
 
 // Same default tenant every other write path in this backend falls back to when a caller
 // (e.g. super_admin, whose JWT carries no tenant_id) doesn't have one of their own - matches
@@ -227,6 +229,46 @@ export async function getFlow(req, res) {
     res.json({ ...flowResult.rows[0], nodes });
   } catch (err) {
     console.error('[IvrController] getFlow failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// Lets a flow author hear a prompt_text node's pronunciation while writing it, instead of only
+// finding out on a live test call. Reuses the exact same synthesis/transcode/delivery path a
+// real campaign call takes (synthesizeAndDeliver), so previewing a phrase also warms its
+// in-memory synthesis cache - a campaign created afterward with this same text+language skips
+// re-synthesizing at "preparing" time, as long as the backend process hasn't restarted since.
+export async function previewPromptTts(req, res) {
+  const { text, languageCode } = req.body;
+  if (!text || typeof text !== 'string') {
+    return res.status(400).json({ error: 'text is required' });
+  }
+  try {
+    const { audioBuffer } = await synthesizeAndDeliver(text, { languageCode, returnBuffer: true });
+    res.setHeader('Content-Type', 'audio/wav');
+    res.send(audioBuffer);
+  } catch (err) {
+    console.error('[IvrController] previewPromptTts failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// Converts free-form Hinglish/romanized text to native script (Devanagari for hi-IN/mr-IN) -
+// Piper's phonemizer expects the language's own script, not a Latin transliteration, and most
+// clients will naturally type in Roman script rather than switch to a native-script keyboard.
+export async function transliteratePrompt(req, res) {
+  const { text, languageCode } = req.body;
+  if (!text || typeof text !== 'string') {
+    return res.status(400).json({ error: 'text is required' });
+  }
+  if (!supportsTransliteration(languageCode)) {
+    return res.status(400).json({ error: `Transliteration not supported for language "${languageCode}"` });
+  }
+  try {
+    const transliterated = await transliterateToNativeScript(text, languageCode);
+    res.json({ transliterated });
+  } catch (err) {
+    console.error('[IvrController] transliteratePrompt failed:', err.message);
     res.status(500).json({ error: err.message });
   }
 }

@@ -79,6 +79,35 @@ export const apiPost = (path, body) => request(path, { method: 'POST', body });
 export const apiPut = (path, body) => request(path, { method: 'PUT', body });
 export const apiDelete = (path) => request(path, { method: 'DELETE' });
 
+// Like apiPost, but for an endpoint that responds with a raw audio blob (e.g. a TTS pronunciation
+// preview) instead of JSON - returns the Blob directly for the caller to play, rather than
+// triggering a file-save like apiDownload does.
+export async function apiPostAudioBlob(path, body) {
+  const token = getToken();
+  const finalHeaders = { 'Content-Type': 'application/json' };
+  if (token) finalHeaders.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${resolveApiBaseUrl()}${path}`, {
+    method: 'POST',
+    headers: finalHeaders,
+    body: JSON.stringify(body)
+  });
+
+  if (res.status === 401) {
+    setStoredAuth(null);
+    if (window.location.pathname !== '/login') {
+      window.location.href = '/login';
+    }
+    throw new ApiError('Session expired - please log in again', 401, null);
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    const message = (data && typeof data === 'object' && data.error) || `Request failed (${res.status})`;
+    throw new ApiError(message, res.status, data);
+  }
+  return res.blob();
+}
+
 // A plain `<a href>` can't carry the Bearer auth header, so file downloads that require auth
 // (like CSV exports) need to fetch the blob themselves and trigger the save via a temporary
 // object URL instead.
