@@ -64,7 +64,7 @@ class AsteriskService extends EventEmitter {
             logger.info('Successfully authenticated with Asterisk AMI');
             this.isConnected = true;
             this.reconnectDelayMs = this.baseReconnectDelayMs;
-            // Lets queueMembershipService resync campaign_agents queue membership against
+            // Lets queueMembershipService resync every tenant's agent queue membership against
             // Postgres on every (re)connect, including after Asterisk restarts where any
             // AMI-only queue state would otherwise be lost - see Workstream 7.
             this.emit('ami_ready');
@@ -256,10 +256,11 @@ class AsteriskService extends EventEmitter {
   }
 
   /**
-   * Adds/removes a dynamic member from an Asterisk queue (queues.conf). Used by
-   * queueMembershipService.js to keep the `campaign_agents` queue's live membership in sync
-   * with agent_profiles.current_status - Postgres stays the single source of truth for who's
-   * idle, Asterisk's queue membership is just a mirror of it. No AMI Bridge/Transfer action is
+   * Adds/removes a dynamic member from an Asterisk queue. Used by queueMembershipService.js to
+   * keep each tenant's own queue live membership in sync with agent_profiles.current_status -
+   * Postgres stays the single source of truth for who's idle, Asterisk's queue membership is
+   * just a mirror of it. The queue name is always passed in by the caller and is per-tenant;
+   * there is no default queue here on purpose. No AMI Bridge/Transfer action is
    * needed for the press-1-to-agent feature - Queue() bridges natively inside the dialplan.
    */
   async queueAdd(queue, interfaceName, opts = {}) {

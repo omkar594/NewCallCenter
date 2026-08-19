@@ -1,10 +1,17 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, AlertCircle, CheckCircle2, PowerOff, Power, Coins, Plus } from 'lucide-react';
-import { apiGet, apiPut, apiPost } from '../../api/client.js';
+import { apiGet, apiPut, apiPost, apiPatch } from '../../api/client.js';
 import DataTable from '../../components/DataTable.jsx';
 import StatusBadge from '../../components/StatusBadge.jsx';
 import Modal from '../../components/Modal.jsx';
+
+// key = what the PATCH endpoint accepts; column = what the tenants row returns.
+const PLAN_FEATURES = [
+  { key: 'ivrEnabled', column: 'ivr_enabled', label: 'IVR flows', hint: 'Visual multi-step call flows, menus, lookups and TTS prompts.' },
+  { key: 'agentsEnabled', column: 'agents_enabled', label: 'Live agents', hint: 'Softphone agents taking press-1 transfers, in this client\u2019s own isolated queue.' },
+  { key: 'inboundEnabled', column: 'inbound_enabled', label: 'Inbound calling', hint: 'Customers can call this client\u2019s SIM numbers back. Needs live agents to be any use.' }
+];
 
 export default function TenantDetail() {
   const { tenantId } = useParams();
@@ -26,6 +33,8 @@ export default function TenantDetail() {
   const [creditNote, setCreditNote] = useState('');
   const [creditError, setCreditError] = useState('');
   const [creditSubmitting, setCreditSubmitting] = useState(false);
+  const [planSaving, setPlanSaving] = useState('');
+  const [planError, setPlanError] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -115,25 +124,42 @@ export default function TenantDetail() {
         <AlertCircle className="w-4 h-4" /> {error}
       </div>
     ) : (
-      <p className="text-sm text-slate-500 dark:text-abyss-50">Loading...</p>
+      <p className="text-sm text-ink-500 dark:text-abyss-50">Loading...</p>
     );
   }
+
+  // Toggling a capability takes effect immediately: the backend clears its per-tenant cache, so
+  // the next call dispatch and the next API request from that client already see the new plan.
+  // Turning agents off does NOT delete the client's agents or their SIP endpoints - it stops the
+  // capability being usable, so a billing change is reversible and destroys nothing.
+  const togglePlanFeature = async (key, value) => {
+    setPlanError('');
+    setPlanSaving(key);
+    try {
+      const data = await apiPatch(`/api/auth/clients/${tenantId}/features`, { [key]: value });
+      setTenant((t) => ({ ...t, ...data.tenant }));
+    } catch (err) {
+      setPlanError(err.message);
+    } finally {
+      setPlanSaving('');
+    }
+  };
 
   return (
     <div className="space-y-8">
       <div>
-        <Link to="/admin" className="inline-flex items-center gap-1 text-sm text-slate-500 dark:text-abyss-50 hover:text-slate-700 mb-2">
+        <Link to="/admin" className="inline-flex items-center gap-1 text-sm text-ink-500 dark:text-abyss-50 hover:text-ink-700 mb-2">
           <ArrowLeft className="w-4 h-4" /> All tenants
         </Link>
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-semibold text-slate-900 dark:text-white">{tenant.name}</h1>
+              <h1 className="text-xl font-semibold text-ink-900 dark:text-white">{tenant.name}</h1>
               <StatusBadge status={tenant.status || 'active'} />
             </div>
-            <p className="text-sm text-slate-500 dark:text-abyss-50">
+            <p className="text-sm text-ink-500 dark:text-abyss-50">
               {tenant.subdomain} - {tenant.admin_count} admin(s) -{' '}
-              <span className={tenant.credit_balance > 0 ? 'text-slate-700' : 'text-red-600 font-medium'}>
+              <span className={tenant.credit_balance > 0 ? 'text-ink-700' : 'text-red-600 font-medium'}>
                 {tenant.credit_balance ?? 0} credits remaining
               </span>
             </p>
@@ -161,28 +187,28 @@ export default function TenantDetail() {
       {showCreditModal && (
         <Modal title="Add Credits" onClose={() => setShowCreditModal(false)}>
           <div className="space-y-4">
-            <p className="text-sm text-slate-600 dark:text-slate-300">
+            <p className="text-sm text-ink-600 dark:text-slate-300">
               Current balance: <strong>{tenant.credit_balance ?? 0} credits</strong>. Every answered call deducts 1
               credit per 15 seconds of connected duration.
             </p>
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Credits to add</label>
+              <label className="block text-sm font-medium text-ink-700 dark:text-slate-200 mb-1">Credits to add</label>
               <input
                 type="number"
                 min="1"
                 step="1"
                 value={creditAmount}
                 onChange={(e) => setCreditAmount(e.target.value)}
-                className="w-full border border-slate-300 dark:border-abyss-200/50 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:focus:ring-neon-cyan/50"
+                className="w-full border border-line-strong dark:border-abyss-200/50 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:focus:ring-neon-cyan/50"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Note (optional)</label>
+              <label className="block text-sm font-medium text-ink-700 dark:text-slate-200 mb-1">Note (optional)</label>
               <input
                 value={creditNote}
                 onChange={(e) => setCreditNote(e.target.value)}
                 placeholder="e.g. Monthly top-up"
-                className="w-full border border-slate-300 dark:border-abyss-200/50 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:focus:ring-neon-cyan/50"
+                className="w-full border border-line-strong dark:border-abyss-200/50 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:focus:ring-neon-cyan/50"
               />
             </div>
             {creditError && (
@@ -198,7 +224,7 @@ export default function TenantDetail() {
               >
                 {creditSubmitting ? 'Adding...' : 'Add Credits'}
               </button>
-              <button onClick={() => setShowCreditModal(false)} className="text-sm text-slate-500 dark:text-abyss-50 hover:text-slate-700 px-4 py-2">
+              <button onClick={() => setShowCreditModal(false)} className="text-sm text-ink-500 dark:text-abyss-50 hover:text-ink-700 px-4 py-2">
                 Cancel
               </button>
             </div>
@@ -210,14 +236,14 @@ export default function TenantDetail() {
         <Modal title={isActive ? 'Deactivate this client?' : 'Reactivate this client?'} onClose={() => setShowLifecycleModal(false)}>
           <div className="space-y-4">
             {isActive ? (
-              <ul className="text-sm text-slate-600 dark:text-slate-300 space-y-1.5 list-disc pl-5">
+              <ul className="text-sm text-ink-600 dark:text-slate-300 space-y-1.5 list-disc pl-5">
                 <li>Every login for <strong>{tenant.name}</strong> stops working immediately.</li>
                 <li>Their SIM ports ({selectedPorts.length ? selectedPorts.join(', ') : 'none'}) are released back to the free pool.</li>
                 <li>Any preparing/running campaigns are cancelled - the dialer stops touching their leads.</li>
                 <li>Nothing is deleted - flows, campaigns, and call history stay fully intact and can be reviewed any time.</li>
               </ul>
             ) : (
-              <ul className="text-sm text-slate-600 dark:text-slate-300 space-y-1.5 list-disc pl-5">
+              <ul className="text-sm text-ink-600 dark:text-slate-300 space-y-1.5 list-disc pl-5">
                 <li>Logins for <strong>{tenant.name}</strong> work again immediately.</li>
                 <li>Ports are <strong>not</strong> automatically restored - assign new ones below after reactivating.</li>
                 <li>Cancelled campaigns stay cancelled - they won't resume dialing on their own.</li>
@@ -238,7 +264,7 @@ export default function TenantDetail() {
               >
                 {lifecycleSubmitting ? 'Working...' : isActive ? 'Yes, deactivate' : 'Yes, reactivate'}
               </button>
-              <button onClick={() => setShowLifecycleModal(false)} className="text-sm text-slate-500 dark:text-abyss-50 hover:text-slate-700 px-4 py-2">
+              <button onClick={() => setShowLifecycleModal(false)} className="text-sm text-ink-500 dark:text-abyss-50 hover:text-ink-700 px-4 py-2">
                 Cancel
               </button>
             </div>
@@ -246,9 +272,43 @@ export default function TenantDetail() {
         </Modal>
       )}
 
-      <section className="bg-white dark:bg-abyss-500 border border-slate-200 dark:border-abyss-300/30 rounded-lg p-6 space-y-4">
-        <h2 className="font-medium text-slate-900 dark:text-white">SIM Ports</h2>
-        <p className="text-sm text-slate-500 dark:text-abyss-50">
+      <section className="bg-surface dark:bg-abyss-500 border border-line dark:border-abyss-300/40 rounded-xl p-6 space-y-4">
+        <h2 className="font-medium text-ink-900 dark:text-white">Plan</h2>
+        <p className="text-sm text-ink-500 dark:text-abyss-50">
+          What this client can use. Outbound broadcast campaigns are always included. Each toggle is enforced
+          in the API, not just hidden in their UI.
+        </p>
+        <div className="space-y-2">
+          {PLAN_FEATURES.map(({ key, column, label, hint }) => (
+            <label key={key} className="flex items-start gap-3 rounded-lg border border-line dark:border-abyss-200/40 px-3 py-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={Boolean(tenant[column])}
+                disabled={planSaving === key}
+                onChange={(e) => togglePlanFeature(key, e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
+              />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-ink-700 dark:text-slate-200">{label}</p>
+                <p className="text-xs text-ink-400 dark:text-abyss-100">{hint}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+        {/* The queue is what actually keeps this client's calls away from every other client's
+            agents - worth surfacing so it can be checked against `queue show` on the PBX. */}
+        {tenant.agent_queue_name && (
+          <p className="text-xs text-ink-400 dark:text-abyss-100">
+            Isolated agent queue: <code className="font-mono">{tenant.agent_queue_name}</code>
+            {tenant.agent_count ? ` - ${tenant.agent_count} agent(s)` : ' - no agents yet'}
+          </p>
+        )}
+        {planError && <p className="text-sm text-red-600 dark:text-red-300">{planError}</p>}
+      </section>
+
+      <section className="bg-surface dark:bg-abyss-500 border border-line dark:border-abyss-300/40 rounded-xl p-6 space-y-4">
+        <h2 className="font-medium text-ink-900 dark:text-white">SIM Ports</h2>
+        <p className="text-sm text-ink-500 dark:text-abyss-50">
           Toggle any free port to add it, or untoggle one of this tenant's own to release it. Ports owned by another tenant are disabled.
         </p>
         <div className="flex flex-wrap gap-2">
@@ -265,10 +325,10 @@ export default function TenantDetail() {
                 title={ownedByOther ? `Owned by ${p.tenant_name}` : undefined}
                 className={`px-3 py-1.5 rounded-md text-sm border ${
                   ownedByOther
-                    ? 'bg-slate-100 border-slate-200 text-slate-300 cursor-not-allowed'
+                    ? 'bg-ink-100 border-line text-ink-300 cursor-not-allowed'
                     : selected
                     ? 'bg-brand-600 border-brand-600 text-white'
-                    : 'bg-white border-slate-300 text-slate-700 hover:border-brand-500'
+                    : 'bg-white border-line-strong text-ink-700 hover:border-brand-500'
                 }`}
               >
                 Port {p.port_number}
@@ -296,7 +356,7 @@ export default function TenantDetail() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="font-medium text-slate-900 dark:text-white">Flows</h2>
+        <h2 className="font-medium text-ink-900 dark:text-white">Flows</h2>
         <DataTable
           rows={flows}
           emptyMessage="This tenant hasn't authored any flows yet."
@@ -310,7 +370,7 @@ export default function TenantDetail() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="font-medium text-slate-900 dark:text-white">Campaigns</h2>
+        <h2 className="font-medium text-ink-900 dark:text-white">Campaigns</h2>
         <DataTable
           rows={campaigns}
           emptyMessage="This tenant hasn't run any campaigns yet."
@@ -319,7 +379,7 @@ export default function TenantDetail() {
               key: 'name',
               label: 'Name',
               render: (c) => (
-                <Link to={`/admin/tenants/${tenantId}/campaigns/${c.id}`} className="text-slate-900 dark:text-white font-medium hover:text-brand-600 dark:hover:text-neon-cyan">
+                <Link to={`/admin/tenants/${tenantId}/campaigns/${c.id}`} className="text-ink-900 dark:text-white font-medium hover:text-brand-600 dark:hover:text-neon-cyan">
                   {c.name}
                 </Link>
               )
@@ -333,7 +393,7 @@ export default function TenantDetail() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="font-medium text-slate-900 dark:text-white flex items-center gap-2">
+        <h2 className="font-medium text-ink-900 dark:text-white flex items-center gap-2">
           <Coins className="w-4 h-4 text-amber-500" /> Credit History
         </h2>
         <DataTable
@@ -345,7 +405,7 @@ export default function TenantDetail() {
               label: 'Type',
               render: (t) => (
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                  t.type === 'topup' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                  t.type === 'topup' ? 'bg-emerald-100 text-emerald-700' : 'bg-ink-100 text-ink-600'
                 }`}>
                   {t.type === 'topup' ? 'Top-up' : 'Deduction'}
                 </span>

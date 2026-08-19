@@ -14,6 +14,7 @@ import {
   transliteratePrompt
 } from '../controllers/ivrController.js';
 import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
+import { requireTenantFeature } from '../middleware/tenantFeature.js';
 
 const MAX_CSV_BYTES = 10 * 1024 * 1024; // matches routes/campaign.js's lead-CSV limit
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // matches routes/campaign.js's broadcast-audio limit
@@ -56,6 +57,10 @@ const uploadAudio = (req, res, next) => {
 
 router.use(authenticateToken);
 router.use(authorizeRoles(['super_admin', 'client_admin', 'team_leader']));
+// Visual IVR flow building is a paid capability - a client on a plain broadcast plan gets the
+// single-prompt campaign path only. Applied to the whole router so flows, lookup tables, prompt
+// uploads and TTS preview are all covered, including any route added here later.
+router.use(requireTenantFeature('ivrEnabled'));
 
 // Workstream 8: client-configurable IVR flow engine. Wire format for the flow body:
 // { name, nodes: [{ client_id, type, is_start, prompt_id, config, next, branches: {matchValue: client_id} }] }

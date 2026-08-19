@@ -1,11 +1,16 @@
-import { createContext, useContext, useState, useCallback } from 'react';
-import { apiPost, getStoredAuth, setStoredAuth } from '../api/client.js';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { apiGet, apiPost, getStoredAuth, setStoredAuth } from '../api/client.js';
 
 const AuthContext = createContext(null);
 
-// Persisted in localStorage (unlike the agent softphone's deliberately in-memory-only token -
-// see pages/agent/Softphone.jsx) since back-office users refreshing the page shouldn't have to
-// log in again every time.
+// Persisted in localStorage so a page refresh doesn't force a re-login. This now covers agents
+// too - the softphone used to keep its own memory-only token and its own login form, which meant
+// agents typed their password twice (see pages/agent/Softphone.jsx).
+//
+// `features` is the tenant's plan: which capabilities this client actually bought. It is used
+// ONLY to hide UI a client has no use for. Every feature is independently enforced server-side by
+// backend/middleware/tenantFeature.js, because a hidden menu item is a UX decision, not access
+// control - the API is reachable directly with any valid token regardless of what renders here.
 export function AuthProvider({ children }) {
   const [auth, setAuth] = useState(() => getStoredAuth());
 
@@ -17,11 +22,35 @@ export function AuthProvider({ children }) {
   // could tell when they'd found a valid one.
   const login = useCallback(async (username, password, portal) => {
     const data = await apiPost('/api/auth/login', { username, password, portal });
-    const nextAuth = { token: data.token, user: data.user };
+    const nextAuth = { token: data.token, user: data.user, features: data.features || null };
     setStoredAuth(nextAuth);
     setAuth(nextAuth);
     return nextAuth;
   }, []);
+
+  // Re-read the plan on mount. Features are baked into the login response, so without this a
+  // client whose Super Admin just enabled live agents would keep seeing the old menus until their
+  // 12h token expired. Failure is ignored on purpose: a transient /me error should not log
+  // anyone out or blank the nav - a genuinely dead token is already handled centrally by the 401
+  // path in api/client.js.
+  useEffect(() => {
+    if (!auth?.token) return;
+    let cancelled = false;
+    apiGet('/api/auth/me')
+      .then((data) => {
+        if (cancelled) return;
+        setAuth((prev) => {
+          if (!prev) return prev;
+          const next = { ...prev, user: { ...prev.user, ...data.user }, features: data.features || null };
+          setStoredAuth(next);
+          return next;
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // Intentionally keyed on the token alone: this should re-run when the account changes, not on
+    // every unrelated auth object update (which the setAuth above would otherwise loop on).
+  }, [auth?.token]);
 
   const logout = useCallback(() => {
     // Best-effort: bumps token_version server-side (see authController.js) so this token - and
@@ -34,7 +63,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ auth, user: auth?.user || null, token: auth?.token || null, login, logout }}>
+    <AuthContext.Provider value={{ auth, user: auth?.user || null, token: auth?.token || null, features: auth?.features || null, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

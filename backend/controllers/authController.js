@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool, { executeTenantQuery } from '../config/database.js';
 import { syncAgentQueueMembership } from '../services/queueMembershipService.js';
+import { ensureTenantQueue, getTenantTelephony, invalidateTenantCache } from '../services/tenantQueueService.js';
 import { getOrProvisionAgentSipCredentials } from '../services/agentProvisioningService.js';
 
 const DEFAULT_TENANT_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
@@ -56,9 +57,9 @@ export async function login(req, res) {
         VALUES ($1, 'login', NOW())
         ON CONFLICT (user_id) DO UPDATE SET current_status = 'login', last_status_change = NOW()
       `, [user.id]);
-      // 'login' is not 'idle' - not eligible for the campaign_agents queue yet until they
+      // 'login' is not 'idle' - not eligible for their tenant's agent queue yet until they
       // explicitly go ready (POST /api/calls/ready).
-      syncAgentQueueMembership(user.id, 'login').catch(() => {});
+      syncAgentQueueMembership(user.id, 'login', user.tenant_id).catch(() => {});
     }
 
     // Generate JWT token containing roles, parent report hierarchy and tenant mapping.
@@ -87,12 +88,47 @@ export async function login(req, res) {
         role: user.role,
         tenant_id: user.tenant_id,
         tenant_name: user.tenant_name
-      }
+      },
+      // What this client bought. The frontend uses this only to hide menus the client has no
+      // use for - every one of these is independently enforced server-side by
+      // middleware/tenantFeature.js, because a hidden menu item is a UX nicety, not access
+      // control. Null for the super admin, who has no tenant of their own.
+      features: await loadTenantFeatures(user.tenant_id)
     });
 
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Internal server error during login' });
+  }
+}
+
+// Shape the tenant capability flags for the frontend. Kept in one place so login and /me can
+// never drift apart and start reporting different capabilities for the same account.
+async function loadTenantFeatures(tenantId) {
+  if (!tenantId) return null;
+  const t = await getTenantTelephony(tenantId);
+  if (!t) return null;
+  return {
+    agentsEnabled: t.agentsEnabled,
+    inboundEnabled: t.inboundEnabled,
+    ivrEnabled: t.ivrEnabled
+  };
+}
+
+// Lets the frontend re-read the current account and its tenant's capabilities without forcing a
+// re-login. Needed because features are handed out at login time: without this, a Super Admin
+// enabling agents for a client wouldn't show up in that client's UI until their 12h token
+// expired.
+export async function getMe(req, res) {
+  const { id, username, role, tenant_id } = req.user;
+  try {
+    res.json({
+      user: { id, username, role, tenant_id },
+      features: await loadTenantFeatures(tenant_id)
+    });
+  } catch (error) {
+    console.error('getMe failed:', error);
+    res.status(500).json({ error: 'Failed to load account' });
   }
 }
 
@@ -111,7 +147,7 @@ export async function logout(req, res) {
       await executeTenantQuery(tenant_id, `
         UPDATE agent_profiles SET current_status = 'offline', last_status_change = NOW() WHERE user_id = $1
       `, [id]);
-      syncAgentQueueMembership(id, 'offline').catch(() => {});
+      syncAgentQueueMembership(id, 'offline', tenant_id).catch(() => {});
     }
     
     res.json({ message: 'Logout successful' });
@@ -130,7 +166,10 @@ export async function logout(req, res) {
 // action only (super_admin) - a client_admin can create their own agents (createAgent below)
 // but should never be able to create ANOTHER client's tenant.
 export async function createClient(req, res) {
-  const { tenantName, subdomain, adminUsername, adminPassword, portNumbers, gatewayId } = req.body;
+  const {
+    tenantName, subdomain, adminUsername, adminPassword, portNumbers, gatewayId,
+    agentsEnabled, inboundEnabled, ivrEnabled
+  } = req.body;
 
   if (!tenantName || !subdomain || !adminUsername || !adminPassword) {
     return res.status(400).json({ error: 'tenantName, subdomain, adminUsername, and adminPassword are required' });
@@ -162,11 +201,24 @@ export async function createClient(req, res) {
       resolvedGatewayId = gatewaysResult.rows[0].id;
     }
 
+    // Capabilities are opt-in, same principle as the mandatory port assignment above: a client
+    // who bought outbound campaigns only should not be able to create agents or receive inbound
+    // calls just because nobody said otherwise. ivr_enabled defaults ON because every existing
+    // client builds flows and defaulting it off would be a regression, not a safe default.
     const tenantResult = await client.query(
-      `INSERT INTO tenants (name, subdomain) VALUES ($1, $2) RETURNING id, name, subdomain, created_at`,
-      [tenantName, subdomain]
+      `INSERT INTO tenants (name, subdomain, agents_enabled, inbound_enabled, ivr_enabled)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, name, subdomain, agents_enabled, inbound_enabled, ivr_enabled,
+                 agent_queue_name, created_at`,
+      [tenantName, subdomain, agentsEnabled === true, inboundEnabled === true, ivrEnabled !== false]
     );
     const tenant = tenantResult.rows[0];
+
+    // This client's own isolated Asterisk queue. A BEFORE INSERT trigger on tenants has already
+    // created it (see database/schema.sql) - this call is belt-and-braces for a database that
+    // predates the trigger, and it runs on THIS transaction's client so a failed onboarding rolls
+    // the queue row back with everything else.
+    await ensureTenantQueue(tenant.id, client);
 
     const passwordHash = await bcrypt.hash(adminPassword, 10);
     const userResult = await client.query(
@@ -218,7 +270,9 @@ export async function getClients(req, res) {
   try {
     const result = await pool.query(`
       SELECT t.id, t.name, t.subdomain, t.status, t.credit_balance, t.created_at,
-             COUNT(u.id) FILTER (WHERE u.role = 'client_admin') AS admin_count
+             t.agents_enabled, t.inbound_enabled, t.ivr_enabled, t.agent_queue_name,
+             COUNT(u.id) FILTER (WHERE u.role = 'client_admin') AS admin_count,
+             COUNT(u.id) FILTER (WHERE u.role = 'agent') AS agent_count
       FROM tenants t
       LEFT JOIN users u ON u.tenant_id = t.id
       GROUP BY t.id
@@ -228,6 +282,58 @@ export async function getClients(req, res) {
   } catch (error) {
     console.error('getClients failed:', error);
     res.status(500).json({ error: 'Failed to list clients' });
+  }
+}
+
+// Change what an existing client's plan includes. Separate from createClient so upgrading a
+// client from outbound-only to live agents doesn't mean re-onboarding them (and re-issuing
+// credentials they've already distributed to their staff).
+//
+// Turning agents OFF does not delete that client's agents or their SIP endpoints - it only stops
+// the capability being usable, so the change is reversible and nothing is destroyed by a billing
+// decision. Their agents do get dropped from the queue on the next resync, and every agent API
+// call starts returning 403 immediately.
+export async function updateClientFeatures(req, res) {
+  const { tenantId } = req.params;
+  const { agentsEnabled, inboundEnabled, ivrEnabled } = req.body;
+
+  // Only apply what was actually sent, so a caller updating one flag can't silently clear the
+  // others by omitting them.
+  const updates = [];
+  const params = [];
+  for (const [column, value] of [
+    ['agents_enabled', agentsEnabled],
+    ['inbound_enabled', inboundEnabled],
+    ['ivr_enabled', ivrEnabled]
+  ]) {
+    if (typeof value === 'boolean') {
+      params.push(value);
+      updates.push(`${column} = $${params.length}`);
+    }
+  }
+  if (updates.length === 0) {
+    return res.status(400).json({ error: 'Provide at least one of agentsEnabled, inboundEnabled, ivrEnabled as a boolean' });
+  }
+
+  try {
+    params.push(tenantId);
+    const result = await pool.query(
+      `UPDATE tenants SET ${updates.join(', ')} WHERE id = $${params.length}
+       RETURNING id, name, agents_enabled, inbound_enabled, ivr_enabled, agent_queue_name`,
+      params
+    );
+    if (!result.rows[0]) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+
+    // The flags are cached per tenant for the outbound dispatch hot path - without this the
+    // change wouldn't take effect until the process restarted.
+    invalidateTenantCache(tenantId);
+
+    res.json({ message: 'Plan updated', tenant: result.rows[0] });
+  } catch (error) {
+    console.error('updateClientFeatures failed:', error);
+    res.status(500).json({ error: 'Failed to update plan' });
   }
 }
 
@@ -356,6 +462,10 @@ export async function deactivateClient(req, res) {
     );
 
     await client.query('COMMIT');
+    // tenantQueueService caches tenant status alongside the queue name, and getQueueName()
+    // returns null for a deactivated tenant - a stale cache entry would keep routing calls to
+    // a frozen client's agents.
+    invalidateTenantCache(tenantId);
     res.json({
       message: `${tenantResult.rows[0].name} deactivated`,
       tenant: tenantResult.rows[0],
@@ -392,6 +502,10 @@ export async function reactivateClient(req, res) {
     await client.query(`UPDATE users SET status = 'active' WHERE tenant_id = $1`, [tenantId]);
 
     await client.query('COMMIT');
+    // tenantQueueService caches tenant status alongside the queue name, and getQueueName()
+    // returns null for a deactivated tenant - a stale cache entry would keep routing calls to
+    // a frozen client's agents.
+    invalidateTenantCache(tenantId);
     res.json({ message: `${tenantResult.rows[0].name} reactivated`, tenant: tenantResult.rows[0] });
   } catch (error) {
     await client.query('ROLLBACK');

@@ -34,6 +34,20 @@ CREATE TABLE tenants (
     subdomain VARCHAR(100) NOT NULL UNIQUE,
     status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'deactivated')),
     credit_balance INTEGER NOT NULL DEFAULT 0,
+    -- Per-client capabilities, ticked by the Super Admin at onboarding. A client who bought
+    -- outbound campaigns only cannot create agents or receive inbound calls - enforced in the
+    -- API by middleware/tenantFeature.js, not just hidden in the UI. Both default FALSE for the
+    -- same reason createClient() makes port assignment mandatory: a capability nobody explicitly
+    -- granted should be off.
+    agents_enabled BOOLEAN NOT NULL DEFAULT false,
+    inbound_enabled BOOLEAN NOT NULL DEFAULT false,
+    ivr_enabled BOOLEAN NOT NULL DEFAULT true,
+    -- This tenant's own Asterisk queue (see the realtime `queues` table below). Every tenant gets
+    -- exactly one, created inside the same transaction as the tenant itself, so a caller of
+    -- Client A can never be routed to an agent of Client B - the isolation is structural rather
+    -- than a check somewhere in the call path that could be forgotten. Derived from the UUID, not
+    -- the subdomain: the subdomain is user-supplied, and renaming it must never repoint a queue.
+    agent_queue_name VARCHAR(80) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -339,6 +353,69 @@ CREATE TABLE ps_contacts (
     prune_on_boot VARCHAR(5),
     qualify_2xx_only VARCHAR(5)
 );
+
+-- Asterisk Realtime queues - one per tenant. Asterisk has no AMI command to create a queue, so
+-- per-tenant queues can only come from realtime; this reuses the exact same res_config_pgsql
+-- connection already serving the ps_* tables above (telephony_config/extconfig.conf maps the
+-- `queues` and `queue_members` families to it). Rows are written by
+-- backend/services/tenantQueueService.js during client onboarding.
+--
+-- Column names are dictated by app_queue's realtime schema - renaming them to match this
+-- project's conventions makes Asterisk silently fail to resolve the queue.
+CREATE TABLE queues (
+    name VARCHAR(128) PRIMARY KEY,
+    musicclass VARCHAR(128),
+    strategy VARCHAR(128),
+    timeout INTEGER,
+    retry INTEGER,
+    maxlen INTEGER,
+    joinempty VARCHAR(128),
+    leavewhenempty VARCHAR(128),
+    ringinuse VARCHAR(5),
+    setinterfacevar VARCHAR(5)
+);
+
+-- Deliberately never written to. Queue membership is 100% dynamic via AMI QueueAdd/QueueRemove
+-- driven by backend/services/queueMembershipService.js, matching queues.conf's
+-- persistentmembers=no - agent_profiles.current_status in Postgres is the single source of truth
+-- for who is available, and a second independently-persisted membership list would drift from it.
+-- The table must still exist: Asterisk requires this family to resolve when queues are realtime.
+CREATE TABLE queue_members (
+    uniqueid SERIAL PRIMARY KEY,
+    queue_name VARCHAR(128),
+    interface VARCHAR(128),
+    membername VARCHAR(128),
+    penalty INTEGER,
+    paused INTEGER
+);
+CREATE INDEX idx_queue_members_queue_name ON queue_members(queue_name);
+
+-- Every tenant gets its queue automatically, at the database level, because "this tenant has no
+-- queue" is not a recoverable state - it means that client's callers reach nobody. Doing it in a
+-- trigger rather than only in createClient() means seed data, manual INSERTs and any future
+-- onboarding path all get it too, and the queue row can never be missing for a tenant that
+-- exists. backend/services/tenantQueueService.js still exposes ensureTenantQueue() as an
+-- idempotent repair for tenants created before this trigger existed.
+CREATE OR REPLACE FUNCTION tenant_provision_queue() RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.agent_queue_name IS NULL THEN
+        NEW.agent_queue_name := 'agents_' || replace(NEW.id::text, '-', '');
+    END IF;
+
+    INSERT INTO queues (name, musicclass, strategy, timeout, retry, maxlen,
+                        joinempty, leavewhenempty, ringinuse, setinterfacevar)
+    VALUES (NEW.agent_queue_name, 'default', 'leastrecent', 20, 3, 0,
+            'no', 'yes', 'no', 'yes')
+    ON CONFLICT (name) DO NOTHING;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_tenant_provision_queue ON tenants;
+CREATE TRIGGER trg_tenant_provision_queue
+    BEFORE INSERT ON tenants
+    FOR EACH ROW EXECUTE FUNCTION tenant_provision_queue();
 
 CREATE INDEX IF NOT EXISTS idx_leads_dial_status ON campaign_leads(dial_status, updated_at);
 CREATE INDEX IF NOT EXISTS idx_leads_campaign_id ON campaign_leads(campaign_id);

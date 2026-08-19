@@ -34,7 +34,7 @@ export async function initiateOutboundCall(req, res) {
     await executeTenantQuery(tenantId, `
       UPDATE agent_profiles SET current_status = 'offline', last_status_change = NOW() WHERE user_id = $1
     `, [agentId]);
-    syncAgentQueueMembership(agentId, 'offline').catch(() => {});
+    syncAgentQueueMembership(agentId, 'offline', tenantId).catch(() => {});
 
     // 3. Dial outbound using Asterisk AMI
     const channel = `PJSIP/${agentId}`;
@@ -106,7 +106,7 @@ export async function submitDisposition(req, res) {
       SET current_status = 'idle', last_status_change = NOW()
       WHERE user_id = $1
     `, [agentId]);
-    syncAgentQueueMembership(agentId, 'idle').catch(() => {});
+    syncAgentQueueMembership(agentId, 'idle', tenantId).catch(() => {});
 
     res.json({ message: 'Disposition submitted successfully, agent set to idle.' });
   } catch (error) {
@@ -147,7 +147,7 @@ export async function updateAgentBreakStatus(req, res) {
       await executeTenantQuery(tenantId, `
         UPDATE agent_profiles SET current_status = 'break', last_status_change = NOW() WHERE user_id = $1
       `, [agentId]);
-      syncAgentQueueMembership(agentId, 'break').catch(() => {});
+      syncAgentQueueMembership(agentId, 'break', tenantId).catch(() => {});
 
       res.json({ message: `Agent went on ${breakType} break` });
 
@@ -163,7 +163,7 @@ export async function updateAgentBreakStatus(req, res) {
       await executeTenantQuery(tenantId, `
         UPDATE agent_profiles SET current_status = 'idle', last_status_change = NOW() WHERE user_id = $1
       `, [agentId]);
-      syncAgentQueueMembership(agentId, 'idle').catch(() => {});
+      syncAgentQueueMembership(agentId, 'idle', tenantId).catch(() => {});
 
       res.json({ message: 'Agent returned to idle' });
     } else {
@@ -324,7 +324,7 @@ export async function triggerLanguageTransfer(req, res) {
     await executeTenantQuery(tenantId, `
       UPDATE agent_profiles SET current_status = 'idle', last_status_change = NOW() WHERE user_id = $1
     `, [agentId]);
-    syncAgentQueueMembership(agentId, 'idle').catch(() => {});
+    syncAgentQueueMembership(agentId, 'idle', tenantId).catch(() => {});
 
     res.json({ message: 'Language re-routing initiated successfully.' });
 
@@ -335,8 +335,39 @@ export async function triggerLanguageTransfer(req, res) {
 }
 
 // Moves an agent from 'login' to 'idle' - the missing "go ready" action noted while building
-// Workstream 7: login() only ever sets 'login', so without this an agent who just signed in
-// is never eligible for the inbound ACD queue OR the new campaign_agents queue.
+// Workstream 7: login() only ever sets 'login', so without this an agent who just signed in is
+// never added to their client's agent queue at all. This is what the softphone's Ready button
+// calls; before it was wired up, no agent ever reached 'idle' and every queue stayed empty.
+// The counterpart to setAgentReady: the agent's softphone has gone away (tab closed, SIP
+// unregistered, shift ended) and they must stop being offered calls.
+//
+// Deliberately NOT modelled as a break: /break writes an agent_breaks timesheet row, and a closed
+// browser tab is not a tea break - recording it as one would quietly corrupt break reporting.
+// It's also not a logout: logout bumps token_version and kills every session for the account,
+// which is far too destructive for "this one tab closed".
+export async function setAgentOffline(req, res) {
+  const agentId = req.user.id;
+  const tenantId = req.tenantId;
+
+  try {
+    const result = await executeTenantQuery(tenantId, `
+      UPDATE agent_profiles SET current_status = 'offline', last_status_change = NOW()
+       WHERE user_id = $1
+      RETURNING id
+    `, [agentId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Agent profile not found' });
+    }
+
+    syncAgentQueueMembership(agentId, 'offline', tenantId).catch(() => {});
+    res.json({ message: 'Agent is now offline' });
+  } catch (error) {
+    console.error('setAgentOffline failed:', error);
+    res.status(500).json({ error: 'Failed to set agent offline' });
+  }
+}
+
 export async function setAgentReady(req, res) {
   const agentId = req.user.id;
   const tenantId = req.tenantId;
@@ -351,7 +382,7 @@ export async function setAgentReady(req, res) {
       return res.status(404).json({ error: 'Agent profile not found' });
     }
 
-    syncAgentQueueMembership(agentId, 'idle').catch(() => {});
+    syncAgentQueueMembership(agentId, 'idle', tenantId).catch(() => {});
     res.json({ message: 'Agent is now idle and ready for calls' });
   } catch (error) {
     console.error('setAgentReady failed:', error);

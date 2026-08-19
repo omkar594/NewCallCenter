@@ -151,6 +151,57 @@ curl -X POST https://YOUR_RENDER_SERVICE.onrender.com/api/campaigns/broadcast \
 
 ---
 
+## 2b. Multi-tenancy: what isolates one client from another
+
+The platform is sold per client. Each client is a `tenant_id`, and isolation is enforced at three
+separate levels - not one.
+
+**Data.** Every table carries `tenant_id`, with Postgres row-level security on top. A client's
+campaigns, leads, flows, call logs, credits and SIM ports are only ever visible to them.
+
+**Telephony.** Each client has their **own Asterisk queue**, `agents_<tenant uuid>`, stored in the
+realtime `queues` table and created automatically when the client is onboarded (a `BEFORE INSERT`
+trigger on `tenants`, plus `tenantQueueService.ensureTenantQueue()`). An agent can only ever be
+added to their own client's queue, so a caller of Client A cannot be answered by an agent of
+Client B. The queue name reaches the dialplan per call, never from static config:
+
+| Path | How the queue name gets there |
+| --- | --- |
+| Outbound press-1 | `AGENT_QUEUE` channel variable set by `bulkCampaignWorker.js` from the campaign's tenant |
+| Inbound | the response body of `GET /api/voice/inbound-route`, which resolves the tenant from `gateway_ports.mapped_trunk_name` |
+| IVR `transfer_queue` node | `ivrFlowEngine.js`, from the flow's own `tenant_id` - **never** from the node's client-authored config |
+
+There is deliberately **no default or fallback queue** anywhere in that chain. If a tenant can't be
+resolved, the caller gets the "agents unavailable" prompt. A fallback would silently reintroduce
+the shared-queue bug this design exists to prevent, and it would do so invisibly.
+
+**Plan.** `tenants` carries `agents_enabled`, `inbound_enabled` and `ivr_enabled`. Outbound
+broadcast is the base product and is always available; the rest are per-client toggles set at
+onboarding (`POST /api/auth/clients`) and changeable later
+(`PATCH /api/auth/clients/:tenantId/features`). They are enforced in the API by
+`middleware/tenantFeature.js` — the frontend also hides the corresponding menus, but that is a
+convenience, not the control. Both agent and inbound default to **off**: a capability nobody
+explicitly granted should not be switched on by omission.
+
+### Agent availability
+
+Two independent things must be true before an agent is sent a call, and they fail for different
+reasons:
+
+1. **SIP registration** — the browser's WSS connection to Asterisk. Breaks on WiFi blips, laptop
+   sleep, an expired certificate.
+2. **Availability** — `agent_profiles.current_status`, which is what actually puts them in their
+   client's queue.
+
+Logging in sets status `login`, **not** `idle`. The agent enters the queue only when they press
+**Ready** (`POST /api/calls/ready`), and leaves on **Break** (`POST /api/calls/break`) or when the
+softphone tab closes (`POST /api/calls/offline`, sent with `keepalive`). An agent whose browser
+happens to be open is not the same as an agent sitting at their desk ready to talk to a customer.
+
+Postgres is the single source of truth. `queues.conf` sets `persistentmembers=no`, so after an
+Asterisk restart every queue comes back empty and is repopulated from Postgres by
+`resyncAllIdleAgents()` on the AMI `ami_ready` event — each agent into their own client's queue.
+
 ## 3. Package Directory Structure
 
 ```
@@ -171,7 +222,7 @@ outbound_campaign_module/
 │   ├── pjsip.conf                      # PJSIP Trunking to Dinstar Gateway + WebRTC agent transport
 │   ├── extensions.conf                 # Dialplan: playback, AMD, DTMF menu, agent-queue transfer
 │   ├── amd.conf                        # Answering Machine Detection Config
-│   ├── queues.conf                     # campaign_agents queue - dynamic AMI-driven membership only
+│   ├── queues.conf                     # queue [general] settings - one queue PER TENANT lives in Postgres (realtime)
 │   ├── res_pgsql.conf                  # Asterisk Realtime DB connection (dynamic agent SIP endpoints)
 │   ├── sorcery.conf                    # Chains static pjsip.conf + Postgres realtime lookups
 │   ├── extconfig.conf                  # Maps ps_endpoints/ps_auths/ps_aors -> the pgsql driver
@@ -243,7 +294,7 @@ This is the part of the deploy that needs the most hands-on EC2 work - budget re
 3. Copy `telephony_config/sorcery.conf` into `/etc/asterisk/`. **Chain the static and realtime wizards for `endpoint`/`auth`/`aor` - do not map them to `realtime` alone.** A bare `endpoint = realtime,ps_endpoints` line *replaces* res_pjsip's normal static-file lookup instead of adding to it, which makes every `[section]` endpoint already in `pjsip.conf` (including `DinstarTrunk` - your actual outbound trunk) invisible to Asterisk. Confirmed live: this broke outbound calling for several minutes before being caught. The working form declares the static `config,pjsip.conf` wizard first, falling through to `realtime` only when nothing static matches (see the file for the exact syntax). **`contact` also needs its own `realtime,ps_contacts` mapping, separate from `aor`** - without it, agent softphones authenticate successfully but the REGISTER still fails (`Unable to bind contact ... to AOR` in the Asterisk log), because the AOR being realtime doesn't automatically make the dynamic Contact each REGISTER creates realtime too.
 4. Copy `telephony_config/queues.conf` into `/etc/asterisk/` - no per-agent edits needed here, membership is 100% AMI-driven from Postgres (see `backend/services/queueMembershipService.js`).
 5. **After any of the above, do a full `sudo systemctl restart asterisk`, not just a `module reload` or `core reload`.** Realtime config resolution (`extconfig.conf` in particular) is read at process startup, same as the `pjsip.conf` transport `bind=` issue from Workstream 3 - a reload alone leaves you debugging stale state.
-6. Create at least one agent via `POST /api/auth/agents` (see Section 1) so there's someone for `campaign_agents` to actually ring.
+6. Create at least one agent via `POST /api/auth/agents` (see Section 1) so there's someone in that client's queue to ring. The agent must then press **Ready** in the softphone (`POST /api/calls/ready`) - logging in alone leaves them at status `login` and out of the queue.
 7. **Domain + TLS for the agent softphone.** Let's Encrypt won't issue a certificate for a bare IP - if you don't have a domain, `<your-ec2-ip-with-dashes>.sslip.io` (e.g. `13-205-220-6.sslip.io`) resolves automatically to that IP with zero DNS setup and works fine with Let's Encrypt. Open security-group ports `80` (HTTP, needed only for the certbot challenge) and `8089` (the actual WSS port) to `0.0.0.0/0`, install `certbot`, then: `sudo certbot certonly --standalone --agree-tos --register-unsafely-without-email -d <your-domain>`.
 8. **The certificate does NOT go in `pjsip.conf`.** This is the second live-discovered gotcha: `[transport-wss]`'s own `cert_file`/`priv_key_file` fields are silently ignored for the `wss` protocol - Asterisk logs `TLS certificate values ignored for websocket transport as they are configured in http.conf` if you set them there. The WSS transport actually rides on Asterisk's **built-in HTTP server**, configured entirely in `telephony_config/http.conf` (`enabled=yes`, `bindaddr=0.0.0.0`, `tlsenable=yes`, `tlsbindaddr=0.0.0.0:8089`, `tlscertfile`/`tlsprivatekey` pointing at the cert). Copy that file into `/etc/asterisk/` too.
 9. Let's Encrypt's files are root-only (0600) and Asterisk runs as its own `asterisk` user - copy the cert/key to somewhere Asterisk can read (e.g. `/etc/asterisk/keys/`, owned `asterisk:root`, mode `640`), and add a certbot **deploy hook** (`/etc/letsencrypt/renewal-hooks/deploy/`) that re-copies + fixes permissions + restarts Asterisk on every renewal (certs expire every 90 days; certbot's own systemd timer handles the renewal trigger, the hook handles getting it to Asterisk).

@@ -64,10 +64,15 @@ export default function App() {
         </Route>
       </Route>
 
-      {/* Not wrapped in ProtectedRoute: the softphone is deliberately self-contained with its own
-          login form and in-memory-only token, matching the original standalone
-          agent_softphone/index.html page it was ported from - see Softphone.jsx. */}
-      <Route path="/softphone" element={<Softphone />} />
+      {/* The softphone now uses the same session as every other page. It used to sit outside
+          ProtectedRoute with its own login form and its own in-memory JWT, which meant an agent
+          logged in at /login, got redirected here, and was immediately asked for their password a
+          second time. The memory-only token was a deliberate tradeoff in the original standalone
+          page (a refresh forced re-login); one login was judged the better trade for agents who
+          use this all day. It has no Layout: an agent needs the phone, not the nav rail. */}
+      <Route element={<ProtectedRoute roles={['agent']} />}>
+        <Route path="/softphone" element={<Softphone />} />
+      </Route>
 
       <Route path="/" element={<Navigate to={user ? homeForRole(user.role) : '/login'} replace />} />
       <Route path="*" element={<Navigate to={user ? homeForRole(user.role) : '/login'} replace />} />

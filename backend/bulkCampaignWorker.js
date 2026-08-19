@@ -5,6 +5,7 @@ import { normalizePhoneNumber } from './utils/phoneNormalizer.js';
 import { creditsForDuration } from './utils/creditCalculator.js';
 import logger from './utils/logger.js';
 import { captureException } from './utils/sentry.js';
+import { getQueueName } from './services/tenantQueueService.js';
 
 dotenv.config();
 
@@ -288,10 +289,19 @@ async function dispatchLead(lead) {
   // single-prompt campaign-broadcast-context. FLOW_ID replaces CAMPAIGN_AUDIO_FILE as the
   // dialplan-facing variable in that case - the flow engine looks up its own prompts per node.
   const dialContext = lead.ivr_flow_id ? 'ivr-campaign-context' : 'campaign-broadcast-context';
+  // AGENT_QUEUE is the campaign owner's OWN queue, resolved per dispatch and passed as a channel
+  // variable. It used to be a single global in extensions.conf ([globals] AGENT_QUEUE=
+  // campaign_agents) shared by every tenant, which meant this caller pressing 1 could be
+  // answered by a different client's agent. The dialplan can't work the tenant out on its own -
+  // only the backend knows which campaign this lead belongs to - so it has to arrive with the call.
+  //
+  // Empty when the client has no agents on their plan (or is deactivated). The dialplan checks
+  // for that and plays the "agents unavailable" prompt rather than calling Queue() with no name.
   const originateVars = {
     LEAD_ID: lead.lead_id,
     CAMP_ID: lead.campaign_id,
-    TARGET_PORT: targetPort || ''
+    TARGET_PORT: targetPort || '',
+    AGENT_QUEUE: (await getQueueName(lead.tenant_id)) || ''
   };
   if (lead.ivr_flow_id) {
     originateVars.FLOW_ID = lead.ivr_flow_id;

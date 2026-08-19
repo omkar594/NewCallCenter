@@ -4,6 +4,7 @@ import pool from '../config/database.js';
 import DinstarService from './dinstarService.js';
 import { normalizePhoneNumber } from '../utils/phoneNormalizer.js';
 import { synthesizeAndDeliver, substituteVars, hasVariablePlaceholders } from './ttsService.js';
+import { getQueueName } from './tenantQueueService.js';
 
 // How long a client's lookup webhook may take before this node gives up and takes the 'error'
 // branch - plan's explicit edge case: a slow/dead client backend must never hang the caller.
@@ -248,8 +249,24 @@ async function handleBranch(node, state, flowCtx) {
 // The channel's Uniqueid is stable across this handoff, so bulkCampaignWorker.js's existing
 // Hangup-based completion tracking (including the long-transfer-call timeout) keeps working
 // with no changes needed there.
-async function handleTransferQueue(node, state) {
-  const queueName = node.config?.queue_name || process.env.CAMPAIGN_AGENT_QUEUE || 'campaign_agents';
+async function handleTransferQueue(node, state, flowCtx) {
+  // The queue is derived from the flow's OWNING TENANT, never from the node's own config.
+  // node.config is client-authored data (they build these flows themselves in the flow editor),
+  // and it used to be read straight into the queue name - which meant a client could point their
+  // own IVR at another client's queue and have their callers answered by that company's agents.
+  // There is deliberately no override and no default fallback queue here.
+  const queueName = await getQueueName(flowCtx.flow.tenant_id);
+
+  if (!queueName) {
+    // Tenant has no agent queue - agents aren't on their plan, or the tenant is deactivated.
+    // Send the caller to the same "agents unavailable" fallback an empty queue would produce,
+    // rather than leaving them on a silent channel.
+    console.warn(`[IvrFlowEngine] transfer_queue node ${node.id}: tenant ${flowCtx.flow.tenant_id} has no agent queue`);
+    await ariService.continueInDialplan(state.channelId, IVR_TRANSFER_CONTEXT, 'fallback', 1);
+    state.leftStasis = true;
+    return null;
+  }
+
   await ariService.continueInDialplan(state.channelId, IVR_TRANSFER_CONTEXT, queueName, 1);
   state.leftStasis = true;
   return null;

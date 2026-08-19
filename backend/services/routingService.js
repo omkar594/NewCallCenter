@@ -64,7 +64,7 @@ class RoutingService {
         `UPDATE agent_profiles SET current_status = 'offline', last_status_change = NOW() WHERE user_id = $1`,
         [agent.id]
       );
-      syncAgentQueueMembership(agent.id, 'offline').catch(() => {});
+      syncAgentQueueMembership(agent.id, 'offline', tenantId).catch(() => {});
       
       // Update call record to bind this agent
       await executeTenantQuery(tenantId,
@@ -133,7 +133,7 @@ class RoutingService {
           `UPDATE agent_profiles SET current_status = 'offline', last_status_change = NOW() WHERE user_id = $1`,
           [agentId]
         );
-        syncAgentQueueMembership(agentId, 'offline').catch(() => {});
+        syncAgentQueueMembership(agentId, 'offline', session.tenantId).catch(() => {});
         await executeTenantQuery(session.tenantId,
           `UPDATE calls SET status = 'active', answer_time = NOW() WHERE id = $1`,
           [session.callId]
@@ -171,7 +171,7 @@ class RoutingService {
       `UPDATE agent_profiles SET current_status = 'idle', last_status_change = NOW() WHERE user_id = $1`,
       [agentId]
     );
-    syncAgentQueueMembership(agentId, 'idle').catch(() => {});
+    syncAgentQueueMembership(agentId, 'idle', session.tenantId).catch(() => {});
 
     // Cancel Asterisk originate channel
     await asteriskService.hangupChannel(`PJSIP/${agentId}`);

@@ -28,6 +28,7 @@ import campaignRoutes from './routes/campaign.js';
 import callRoutes from './routes/call.js';
 import analyticsRoutes from './routes/analytics.js';
 import ivrRoutes from './routes/ivr.js';
+import { getTenantTelephony } from './services/tenantQueueService.js';
 
 // Start Outbound Campaign Queue Worker
 import { getLastTickAt } from './bulkCampaignWorker.js';
@@ -69,9 +70,10 @@ const io = new Server(server, {
 // Expose Socket.io globally for real-time escalations
 global.io = io;
 
-// Keep the `campaign_agents` Asterisk queue's membership in sync with Postgres on every AMI
-// (re)connect - including after an Asterisk restart, where queues.conf's persistentmembers=no
-// means the queue otherwise comes back empty until each agent's next unrelated status change.
+// Keep every tenant's agent queue membership in sync with Postgres on every AMI (re)connect -
+// including after an Asterisk restart, where queues.conf's persistentmembers=no means the
+// queues otherwise come back empty until each agent's next unrelated status change. Each agent
+// is re-added to THEIR OWN client's queue, never a shared one.
 asteriskService.on('ami_ready', () => {
   resyncAllIdleAgents().catch((err) => console.error('[QueueMembership] Resync on ami_ready failed:', err.message));
 });
@@ -576,6 +578,93 @@ app.post('/api/voice/incoming-filter', requireWebhookSecret, async (req, res) =>
   } catch (error) {
     console.error('incoming-filter failed:', error);
     res.status(500).json({ error: 'Internal server error handling inbound call' });
+  }
+});
+
+/**
+ * Dialplan-facing inbound router, hit by CURL() from extensions.conf's [inbound-context].
+ *
+ * Route: GET /api/voice/inbound-route  ->  responds in PLAIN TEXT: "reject", or the name of the
+ * Asterisk queue the caller should be placed in.
+ *
+ * Plain text, not JSON, because Asterisk's CURL() has no JSON parser and pattern-matching a JSON
+ * body inside the dialplan is unmaintainable. Gated by the same shared secret as /optout, since
+ * Asterisk cannot carry a JWT (see middleware/webhookAuth.js).
+ *
+ * It returns the QUEUE NAME rather than a bare "queue" because each client now has their own
+ * queue - the dialplan has no way to work out which one, since only the backend knows which
+ * tenant owns the trunk the call arrived on.
+ *
+ * Deliberately does NOT call routingService.routeCallToAgent(): the dialplan's Queue() is now the
+ * single agent-routing mechanism, shared with the outbound press-1 transfer. Running both would
+ * race to ring the same agents twice for one caller.
+ *
+ * FAILS CLOSED. An earlier version failed open - on any error it queued the caller anyway, on the
+ * grounds that hanging up on a real customer is worse than letting a spam call through. That was
+ * only safe while a single global queue existed. Now, "queue them anyway" would mean picking a
+ * tenant's agents without knowing which tenant, which is the exact cross-client leak this design
+ * removes. On error the caller hears the "agents unavailable" prompt instead - a bad minute for
+ * one caller, rather than one company's customer being handed to another company's agent.
+ */
+app.get('/api/voice/inbound-route', requireWebhookSecret, async (req, res) => {
+  const { caller, did, trunk } = req.query;
+  res.type('text/plain');
+
+  if (!caller || !trunk) {
+    console.warn('[Inbound] Missing caller or trunk in inbound-route - rejecting');
+    return res.send('reject');
+  }
+
+  try {
+    if (await spamService.checkIsSpam(caller)) {
+      console.log(`[Inbound] Rejecting known-spam caller ${caller}`);
+      return res.send('reject');
+    }
+
+    // Which client owns the SIM/trunk this call arrived on. gateway_ports.mapped_trunk_name is
+    // the existing DID->tenant mapping (set by the Super Admin when allocating ports).
+    const portResult = await executeTenantQuery(null, `
+      SELECT tenant_id FROM gateway_ports WHERE mapped_trunk_name = $1 LIMIT 1
+    `, [trunk]);
+    const tenantId = portResult.rows[0]?.tenant_id;
+    if (!tenantId) {
+      console.warn(`[Inbound] Trunk ${trunk} is not allocated to any tenant - rejecting`);
+      return res.send('reject');
+    }
+
+    const telephony = await getTenantTelephony(tenantId);
+    if (!telephony?.active) {
+      console.warn(`[Inbound] Tenant ${tenantId} is deactivated - rejecting`);
+      return res.send('reject');
+    }
+    // Inbound is a paid capability. A client on an outbound-only plan may still own SIM ports
+    // (they dial out on them); that must not entitle them to take calls in on those numbers.
+    if (!telephony.inboundEnabled) {
+      console.warn(`[Inbound] Tenant ${tenantId} does not have inbound enabled - rejecting`);
+      return res.send('reject');
+    }
+    if (!telephony.agentsEnabled || !telephony.queueName) {
+      console.warn(`[Inbound] Tenant ${tenantId} has no agent queue - rejecting`);
+      return res.send('reject');
+    }
+
+    // Best-effort call log for reporting. A logging failure must never drop a real caller, so
+    // this is caught rather than allowed to fall into the outer catch.
+    await executeTenantQuery(tenantId, `
+      INSERT INTO calls (tenant_id, caller_number, callee_number, direction, status)
+      VALUES ($1, $2, $3, 'inbound', 'queued')
+    `, [tenantId, caller, did || 'InboundHotline'])
+      .catch((err) => console.error('[Inbound] Failed to log inbound call:', err.message));
+
+    // The tenant's OWN queue - this is what makes it impossible for this caller to be answered
+    // by a different client's agent.
+    return res.send(telephony.queueName);
+  } catch (error) {
+    // FAIL CLOSED - see the note above. Queueing on error would mean guessing which client's
+    // agents should answer, and guessing wrong connects one company's customer to another
+    // company's agent.
+    console.error('[Inbound] inbound-route failed, rejecting:', error.message);
+    return res.send('reject');
   }
 });
 
