@@ -1,4 +1,9 @@
 /** @type {import('tailwindcss').Config} */
+// Palette, type scale and elevation are lifted directly from the telephony-console mockup
+// (Business-Platform-Design/artifacts/mockup-sandbox). That mockup keeps its whole design system
+// inline as arbitrary Tailwind values rather than in a config, so the hex values below are the
+// extracted source of truth - keeping them as named tokens means every page picks up the identity
+// without repeating raw hexes everywhere.
 export default {
   // Toggled via a `dark` class on <html> (see context/ThemeContext.jsx) rather than following
   // the OS preference, so the user's explicit choice always wins and persists across sessions.
@@ -7,74 +12,103 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Montserrat', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        // Used for dark-mode dashboard surfaces (see Dashboard.jsx) - reads as technical/modern,
-        // matching the neon/glassmorphism reference brief. Light mode keeps plain Montserrat.
+        sans: ['"DM Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        // Headings, metric values and anything numeric - the mockup pairs a geometric display
+        // face against DM Sans for exactly these.
         display: ['"Space Grotesk"', 'ui-sans-serif', 'system-ui', 'sans-serif']
       },
       colors: {
-        // Dark-mode "analytical dashboard" accent palette - glowing electric cyan/purple/green
-        // against deep near-black surfaces, per the neon/glassmorphism reference brief. Only
-        // meant to be used behind dark: variants; the light theme never references these.
-        neon: {
-          cyan: '#00f0ff',
-          purple: '#b026ff',
-          green: '#00ff66'
-        },
-        // Deep dark surfaces for dark-mode backgrounds/panels (glassmorphism cards sit on top of
-        // these with backdrop-blur + low-opacity fills).
-        abyss: {
-          50: '#8892a6',
-          100: '#6b7690',
-          200: '#4d5773',
-          300: '#374057',
-          400: '#252c3d',
-          500: '#171c28',
-          600: '#12151f',
-          700: '#0d0f17',
-          800: '#090a10',
-          900: '#05060a'
-        },
-        // Teal - primary interactive color (buttons, links, focus rings) across the whole app.
+        // Teal - the mockup's single accent, used for active nav, links, primary fills and the
+        // "answered/healthy" semantic across charts and pills.
         brand: {
-          50: '#f0f7f6',
-          100: '#dceeec',
-          200: '#bfddd9',
-          300: '#9cc9c3',
-          400: '#7fb9b3',
-          500: '#67b0ac',
-          600: '#4e948f',
-          700: '#3d7672',
-          800: '#2e5a57',
-          900: '#22423f'
+          50: '#f0f7f5',
+          100: '#e5f6f2',
+          200: '#d8eeea',
+          300: '#bfe9df',
+          400: '#5fc4b6',
+          500: '#168f84',
+          600: '#0f7d73',
+          700: '#0d7069',
+          800: '#0c625b',
+          900: '#154f4a'
         },
-        // Coral - decorative accents/highlights only (live badges, tags). Kept separate from the
-        // semantic red-* classes used for destructive actions so accents never read as "danger".
+        // Coral - decorative/critical accents only (failed calls, destructive hints). Kept apart
+        // from the semantic red-* classes so an accent never reads as an error state.
         coral: {
-          50: '#fff1f1',
-          100: '#ffe1e1',
-          200: '#ffc7c7',
-          300: '#ffa3a3',
-          400: '#ff8080',
-          500: '#ff6363',
-          600: '#e84545',
-          700: '#c22f2f',
-          800: '#9c2626',
-          900: '#7a1f1f'
+          50: '#ffebe5',
+          100: '#f9d9d0',
+          200: '#f4c6bb',
+          300: '#e9a496',
+          400: '#df775f',
+          500: '#c25d4d',
+          600: '#b34838',
+          700: '#963a2d',
+          800: '#7a2f25',
+          900: '#5e241c'
         },
-        // Ink - dark surfaces/text (sidebar, headings).
+        // Amber - "needs attention" states: paused campaigns, low balance, degraded ports.
+        gold: {
+          50: '#fff8e9',
+          100: '#fff4dc',
+          200: '#f9dca5',
+          300: '#f0d89f',
+          400: '#e5b75d',
+          500: '#d89534',
+          600: '#c17820',
+          700: '#9a6500',
+          800: '#855d15',
+          900: '#7f641e'
+        },
+        // Ink - text and the deep-teal surfaces the mockup uses for primary buttons, dark chart
+        // panels and the sidebar. 900 is the near-black-teal the mockup calls its darkest surface.
         ink: {
-          50: '#f4f5f7',
-          100: '#e4e6ea',
-          200: '#c7cbd3',
-          300: '#9fa5b2',
-          400: '#6d7585',
-          500: '#454d5e',
-          600: '#323847',
-          700: '#262b38',
-          800: '#1f232e',
-          900: '#19202b'
+          50: '#f1f5f2',
+          100: '#e1ebe7',
+          200: '#c9d8d4',
+          300: '#a1afac',
+          400: '#879591',
+          500: '#738382',
+          600: '#667976',
+          700: '#49615d',
+          800: '#2d4a4c',
+          900: '#172d32'
+        },
+        // Named surfaces, so page chrome never hard-codes a hex. `deep` is the mockup's #173e42 -
+        // its primary button fill and the ground behind its bar charts.
+        canvas: '#f4f7f5',
+        surface: '#fbfcfb',
+        rail: '#eef4f1',
+        topbar: '#f8faf8',
+        line: '#dfe7e4',
+        'line-strong': '#dce6e2',
+        deep: '#173e42',
+        // Dark-mode ramp. The mockup only styles its outer chrome for dark (#13282c page,
+        // #183438 panels, #315052 borders) - this extends that same deep-teal family into a full
+        // ramp so cards, tables and inputs all have a surface to sit on.
+        abyss: {
+          50: '#9db5b2',
+          100: '#7d9995',
+          200: '#5c7a78',
+          300: '#3f5f60',
+          400: '#264a4d',
+          500: '#183438',
+          600: '#152e31',
+          700: '#13282c',
+          800: '#0f2124',
+          900: '#0b191b'
+        },
+        // Legible-on-dark accents. Named `neon` for continuity with the classes already spread
+        // across the pages, but retuned to the mockup's teal family rather than an electric glow.
+        neon: {
+          cyan: '#5fd4c4',
+          green: '#a8db4e',
+          purple: '#9d94d8'
         }
+      },
+      boxShadow: {
+        // The mockup's single card elevation - a very soft ink-tinted lift, not a grey drop.
+        card: '0 5px 16px rgba(24,48,53,.035)',
+        raise: '0 7px 18px rgba(23,62,66,.12)'
       }
     }
   },

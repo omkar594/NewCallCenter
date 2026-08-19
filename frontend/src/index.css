@@ -1,17 +1,13 @@
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+/* DM Sans (body) + Space Grotesk (display/numeric) - the pairing the telephony-console mockup
+   uses throughout. Montserrat was the previous body face and is no longer referenced. */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400..700&family=Space+Grotesk:wght@400..700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 body {
-  @apply text-ink-900 antialiased dark:text-slate-100;
-  background-color: #f3f6f5;
-}
-
-/* `dark` class lives on <html> (see context/ThemeContext.jsx / Tailwind's darkMode: 'class'). */
-html.dark body {
-  background-color: #05060a;
+  @apply bg-canvas text-ink-900 antialiased dark:bg-abyss-700 dark:text-slate-100;
 }
 
 /* Without an explicit color-scheme, some browsers apply their own native dark styling to form
@@ -20,10 +16,9 @@ html.dark body {
    placeholder text: the browser could render an input with a dark native background while
    Tailwind's own classes assumed a light one (or vice versa). Declaring color-scheme explicitly
    per mode keeps native form-control chrome in sync with the actual theme.
-   Every input/select/textarea also gets an explicit dark background/text/placeholder here in one
-   place, rather than requiring every page's markup to repeat it, so this fix reaches all of them
-   at once ("every place holder... everywhere" - the input's own classes, if any, still win via
-   normal cascade specificity since these are base-layer defaults). */
+   Every input/select/textarea also gets its base look here in one place, rather than requiring
+   every page's markup to repeat it - the mockup's inputs are white with a soft #dce7e3 border,
+   an 11px label-sized face and a rounded-xl corner. */
 @layer base {
   html {
     color-scheme: light;
@@ -34,25 +29,38 @@ html.dark body {
   input,
   select,
   textarea {
-    @apply dark:bg-abyss-400 dark:text-white dark:border-abyss-200/50;
+    @apply bg-white border-line-strong text-ink-700 dark:bg-abyss-600 dark:text-white dark:border-abyss-300;
   }
   input::placeholder,
   textarea::placeholder {
-    @apply text-slate-400 dark:text-abyss-100;
+    @apply text-ink-300 dark:text-abyss-100;
   }
 }
 
-/* "Glowing smooth spline" charts (see pages/tenant/Dashboard.jsx, superadmin/Dashboard.jsx) -
-   recharts renders each Line as an SVG <path class="recharts-line-curve">; a CSS drop-shadow on
-   that path is a more reliable cross-browser glow than recharts' own <filter> plumbing. Scoped to
-   dark mode only (a glow reads as noise on a white background) and to a wrapper class per accent
-   color so multiple differently-colored lines in the same chart glow correctly. */
+@layer components {
+  /* The mockup's one card treatment, repeated on every panel across all six screens. */
+  .panel {
+    @apply rounded-2xl border border-line bg-surface shadow-card dark:border-abyss-300/40 dark:bg-abyss-500 dark:shadow-none;
+  }
+  /* Its small-caps section label - 10px, heavy, wide tracking. */
+  .eyebrow {
+    @apply text-[10px] font-bold uppercase tracking-[1.5px] text-ink-400 dark:text-abyss-100;
+  }
+  /* Card heading: Space Grotesk at 15px, the size used above every panel in the mockup. */
+  .panel-title {
+    @apply font-display text-[15px] font-semibold text-ink-900 dark:text-white;
+  }
+}
+
+/* Glow on chart lines, dark mode only - recharts renders each Line as an SVG path, and a CSS
+   drop-shadow on it is more reliable cross-browser than recharts' own filter plumbing. Kept
+   subtle here to match the mockup's restraint rather than reading as neon. */
 html.dark .chart-glow-cyan .recharts-line-curve {
-  filter: drop-shadow(0 0 6px rgba(0, 240, 255, 0.7));
+  filter: drop-shadow(0 0 5px rgba(95, 212, 196, 0.5));
 }
 html.dark .chart-glow-green .recharts-line-curve {
-  filter: drop-shadow(0 0 6px rgba(0, 255, 102, 0.7));
+  filter: drop-shadow(0 0 5px rgba(168, 219, 78, 0.45));
 }
 html.dark .chart-glow-purple .recharts-line-curve {
-  filter: drop-shadow(0 0 6px rgba(176, 38, 255, 0.7));
+  filter: drop-shadow(0 0 5px rgba(157, 148, 216, 0.45));
 }

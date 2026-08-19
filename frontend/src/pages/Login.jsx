@@ -64,12 +64,12 @@ export default function Login({ variant = 'client' }) {
           <h1 className="text-3xl font-semibold text-white leading-tight mb-4">
             Your outbound voice platform,<br />under one console.
           </h1>
-          <p className="text-slate-400 text-sm mb-8">
+          <p className="text-ink-400 text-sm mb-8">
             Manage campaigns, IVR flows, gateway ports and live calls across every tenant from a single, unified control room.
           </p>
           <ul className="space-y-3">
             {HIGHLIGHTS.map(({ icon: Icon, text }) => (
-              <li key={text} className="flex items-center gap-3 text-sm text-slate-300">
+              <li key={text} className="flex items-center gap-3 text-sm text-ink-300">
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/5 ring-1 ring-white/10">
                   <Icon className="w-4 h-4 text-teal-400" />
                 </span>
@@ -80,7 +80,7 @@ export default function Login({ variant = 'client' }) {
         </div>
       </div>
 
-      <div className="relative flex flex-1 items-center justify-center px-4 py-12 bg-slate-950 lg:bg-[#f3f6f5] overflow-hidden">
+      <div className="relative flex flex-1 items-center justify-center px-4 py-12 bg-slate-950 lg:bg-canvas overflow-hidden">
         <div className="lg:hidden absolute inset-0 overflow-hidden">
           <PlexusBackground />
           <div className="absolute inset-0 bg-slate-950/70" />
@@ -90,7 +90,7 @@ export default function Login({ variant = 'client' }) {
         <div
           className="hidden lg:block pointer-events-none absolute inset-0"
           style={{
-            backgroundImage: 'radial-gradient(circle, rgba(78,148,143,0.50) 1px, transparent 1px)',
+            backgroundImage: 'radial-gradient(circle, rgba(22,143,132,0.35) 1px, transparent 1px)',
             backgroundSize: '28px 28px'
           }}
         />
@@ -138,33 +138,33 @@ export default function Login({ variant = 'client' }) {
               <div>
                 <label className="block text-sm font-medium text-ink-700 mb-1">Username</label>
                 <div className="relative">
-                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <User className="w-4 h-4 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     autoFocus
                     autoComplete="username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-shadow"
+                    className="w-full border border-line-strong rounded-lg pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-shadow"
                   />
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-ink-700 mb-1">Password</label>
                 <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Lock className="w-4 h-4 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg pl-9 pr-9 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-shadow"
+                    className="w-full border border-line-strong rounded-lg pl-9 pr-9 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-shadow"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
                     tabIndex={-1}
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-600"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -194,7 +194,7 @@ export default function Login({ variant = 'client' }) {
             </Link>
           </div>
 
-          <p className="text-center text-xs text-slate-400 lg:text-ink-400 mt-6">
+          <p className="text-center text-xs text-ink-400 lg:text-ink-400 mt-6">
             Secured multi-tenant access · CallCenter Console
           </p>
         </div>

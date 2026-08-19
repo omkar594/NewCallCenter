@@ -24,16 +24,16 @@ const LIVE_CALLS_POLL_MS = 4000;
 // Chart colors can't be Tailwind classes (recharts renders raw SVG props) - kept in sync by hand
 // with tailwind.config.js's neon/brand/coral scales.
 const PALETTE = {
-  light: { primary: '#4e948f', secondary: '#ff6363', grid: '#e2e8f0', text: '#64748b' },
-  dark: { primary: '#00f0ff', secondary: '#ff6363', grid: 'rgba(255,255,255,0.08)', text: '#8892a6' }
+  light: { primary: '#168f84', secondary: '#df775f', grid: '#e9efec', text: '#a1afac' },
+  dark: { primary: '#5fd4c4', secondary: '#df775f', grid: 'rgba(255,255,255,0.08)', text: '#9db5b2' }
 };
 
 // Dark-mode glow color per card, matching the neon/glassmorphism reference brief - each metric
 // gets its own accent so the row reads as a real "analytical dashboard" rather than one flat tone.
 const ACCENTS = {
-  cyan: { icon: 'dark:text-neon-cyan', ring: 'dark:shadow-[0_0_20px_-4px_rgba(0,240,255,0.35)] dark:hover:shadow-[0_0_24px_-2px_rgba(0,240,255,0.5)]', bg: 'dark:bg-neon-cyan/10', stroke: '#00f0ff' },
-  purple: { icon: 'dark:text-neon-purple', ring: 'dark:shadow-[0_0_20px_-4px_rgba(176,38,255,0.35)] dark:hover:shadow-[0_0_24px_-2px_rgba(176,38,255,0.5)]', bg: 'dark:bg-neon-purple/10', stroke: '#b026ff' },
-  green: { icon: 'dark:text-neon-green', ring: 'dark:shadow-[0_0_20px_-4px_rgba(0,255,102,0.35)] dark:hover:shadow-[0_0_24px_-2px_rgba(0,255,102,0.5)]', bg: 'dark:bg-neon-green/10', stroke: '#00ff66' }
+  cyan: { icon: 'dark:text-neon-cyan', ring: '', bg: 'dark:bg-neon-cyan/10', stroke: '#5fd4c4' },
+  purple: { icon: 'dark:text-neon-purple', ring: '', bg: 'dark:bg-neon-purple/10', stroke: '#9d94d8' },
+  green: { icon: 'dark:text-neon-green', ring: '', bg: 'dark:bg-neon-green/10', stroke: '#a8db4e' }
 };
 
 // `trend`: optional array of numbers rendered as a tiny inline sparkline (no axes/grid) behind
@@ -43,7 +43,7 @@ function StatCard({ icon: Icon, label, value, warn, accent = 'cyan', trend }) {
   const sparkData = trend?.map((v, i) => ({ i, v }));
   return (
     <div
-      className={`bg-white dark:bg-abyss-500/60 dark:backdrop-blur border border-brand-100 dark:border-white/10 rounded-xl p-5 flex items-center gap-4 shadow-sm transition-shadow ${warn ? '' : a.ring}`}
+      className={`bg-surface dark:bg-abyss-500 border border-line dark:border-abyss-300/40 rounded-2xl p-5 flex items-center gap-4 shadow-card transition-shadow ${warn ? '' : a.ring}`}
     >
       <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${warn ? 'bg-coral-50 text-coral-600 dark:bg-coral-500/10 dark:text-coral-400' : `bg-brand-50 text-brand-600 ${a.bg} ${a.icon}`}`}>
         <Icon className="w-5 h-5" />
@@ -58,11 +58,11 @@ function StatCard({ icon: Icon, label, value, warn, accent = 'cyan', trend }) {
             <AreaChart data={sparkData}>
               <defs>
                 <linearGradient id={`spark-${label}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={warn ? '#ff6363' : a.stroke} stopOpacity={0.5} />
-                  <stop offset="100%" stopColor={warn ? '#ff6363' : a.stroke} stopOpacity={0} />
+                  <stop offset="0%" stopColor={warn ? '#df775f' : a.stroke} stopOpacity={0.5} />
+                  <stop offset="100%" stopColor={warn ? '#df775f' : a.stroke} stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <Area type="monotone" dataKey="v" stroke={warn ? '#ff6363' : a.stroke} strokeWidth={1.5} fill={`url(#spark-${label})`} />
+              <Area type="monotone" dataKey="v" stroke={warn ? '#df775f' : a.stroke} strokeWidth={1.5} fill={`url(#spark-${label})`} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -72,7 +72,7 @@ function StatCard({ icon: Icon, label, value, warn, accent = 'cyan', trend }) {
 }
 
 const CardShell = ({ title, icon: Icon, children }) => (
-  <div className="bg-white dark:bg-abyss-500/60 dark:backdrop-blur border border-brand-100 dark:border-white/10 rounded-xl p-5 dark:shadow-[0_0_20px_-8px_rgba(0,240,255,0.25)]">
+  <div className="bg-surface dark:bg-abyss-500 border border-line dark:border-abyss-300/40 rounded-2xl p-5">
     <h2 className="font-medium text-ink-900 dark:text-white flex items-center gap-2 mb-4">
       {Icon && <Icon className="w-4 h-4 text-brand-500 dark:text-neon-cyan" />}
       {title}
@@ -114,7 +114,7 @@ function formatDuration(seconds) {
 function OngoingCallCard({ call, nowMs }) {
   const elapsedSec = Math.floor((nowMs - new Date(call.dispatched_at).getTime()) / 1000);
   return (
-    <div className="bg-white dark:bg-abyss-500/60 dark:backdrop-blur border border-brand-100 dark:border-neon-green/20 rounded-xl p-4 shadow-sm dark:shadow-[0_0_16px_-4px_rgba(0,255,102,0.3)]">
+    <div className="bg-white dark:bg-abyss-500/60 dark:backdrop-blur border border-brand-100 dark:border-neon-green/20 rounded-xl p-4 shadow-card">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="w-9 h-9 shrink-0 rounded-full bg-brand-50 text-brand-600 dark:bg-neon-green/10 dark:text-neon-green flex items-center justify-center">
@@ -223,12 +223,12 @@ export default function TenantDashboard() {
   // A single-source Sankey (Total Leads -> 6 outcomes) rendered as bare, unstyled flows with no
   // room for labels - a donut reads far better for "how does one whole split into categories".
   const outcomeLabels = [
-    { key: 'answered', name: 'Answered', light: '#4e948f', dark: '#00ff66' },
+    { key: 'answered', name: 'Answered', light: '#168f84', dark: '#a8db4e' },
     { key: 'busy', name: 'Busy', light: '#f59e0b', dark: '#f59e0b' },
-    { key: 'failed', name: 'Failed', light: '#ef4444', dark: '#ff6363' },
+    { key: 'failed', name: 'Failed', light: '#ef4444', dark: '#df775f' },
     { key: 'no-answer', name: 'No Answer', light: '#fb923c', dark: '#fb923c' },
-    { key: 'pending', name: 'Pending', light: '#94a3b8', dark: '#8892a6' },
-    { key: 'processing', name: 'In Progress', light: '#b026ff', dark: '#b026ff' }
+    { key: 'pending', name: 'Pending', light: '#94a3b8', dark: '#9db5b2' },
+    { key: 'processing', name: 'In Progress', light: '#9d94d8', dark: '#9d94d8' }
   ];
   const outcomeChartData = overview
     ? outcomeLabels
@@ -268,7 +268,7 @@ export default function TenantDashboard() {
         <div className="lg:col-span-2 space-y-4">
           <CardShell title="Credit Balance - Last 14 Days" icon={Coins}>
             {creditChartData.length < 2 ? (
-              <p className="text-sm text-slate-400 dark:text-abyss-100 py-16 text-center">Not enough credit activity yet to chart a trend.</p>
+              <p className="text-sm text-ink-400 dark:text-abyss-100 py-16 text-center">Not enough credit activity yet to chart a trend.</p>
             ) : (
               <div className="chart-glow-green">
                 <ResponsiveContainer width="100%" height={220}>
@@ -278,13 +278,13 @@ export default function TenantDashboard() {
                     <YAxis stroke={colors.text} fontSize={12} tickLine={false} allowDecimals={false} />
                     <Tooltip
                       contentStyle={{
-                        background: theme === 'dark' ? '#0d0f17' : '#fff',
-                        border: `1px solid ${theme === 'dark' ? 'rgba(0,255,102,0.2)' : '#e2e8f0'}`,
+                        background: theme === 'dark' ? '#183438' : '#fff',
+                        border: `1px solid ${theme === 'dark' ? 'rgba(168,219,78,0.2)' : '#e9efec'}`,
                         borderRadius: 8,
                         fontSize: 13
                       }}
                     />
-                    <Line type="monotone" dataKey="Balance" stroke={theme === 'dark' ? '#00ff66' : '#4e948f'} strokeWidth={2.5} dot={false} />
+                    <Line type="monotone" dataKey="Balance" stroke={theme === 'dark' ? '#a8db4e' : '#168f84'} strokeWidth={2.5} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -293,10 +293,10 @@ export default function TenantDashboard() {
 
           <CardShell title="Lead Outcomes" icon={Target}>
             {outcomeChartData.length === 0 ? (
-              <p className="text-sm text-slate-400 dark:text-abyss-100 py-16 text-center">No dialed leads yet to visualize.</p>
+              <p className="text-sm text-ink-400 dark:text-abyss-100 py-16 text-center">No dialed leads yet to visualize.</p>
             ) : (
               <div className="flex items-center gap-6">
-                <div className="relative w-40 h-40 shrink-0 dark:drop-shadow-[0_0_10px_rgba(0,240,255,0.35)]">
+                <div className="relative w-40 h-40 shrink-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -314,8 +314,8 @@ export default function TenantDashboard() {
                       </Pie>
                       <Tooltip
                         contentStyle={{
-                          background: theme === 'dark' ? '#0d0f17' : '#fff',
-                          border: `1px solid ${theme === 'dark' ? 'rgba(0,240,255,0.2)' : '#e2e8f0'}`,
+                          background: theme === 'dark' ? '#183438' : '#fff',
+                          border: `1px solid ${theme === 'dark' ? 'rgba(95,212,196,0.2)' : '#e9efec'}`,
                           borderRadius: 8,
                           fontSize: 13
                         }}
@@ -330,7 +330,7 @@ export default function TenantDashboard() {
                 <div className="space-y-1.5 min-w-0">
                   {outcomeChartData.map((o) => (
                     <div key={o.name} className="flex items-center gap-2 text-xs">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: o.color, boxShadow: theme === 'dark' ? `0 0 6px ${o.color}` : 'none' }} />
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: o.color, boxShadow: 'none' }} />
                       <span className="text-ink-700 dark:text-slate-300 truncate">{o.name}</span>
                       <span className="text-ink-400 dark:text-abyss-50 ml-auto">{o.value}</span>
                     </div>
@@ -344,14 +344,14 @@ export default function TenantDashboard() {
         <div className="space-y-4">
           <CardShell title="Performance" icon={TrendingUp}>
             <div className="flex items-center justify-around">
-              <RadialStat label="Success Rate" percent={successRate} color={theme === 'dark' ? '#00ff66' : '#4e948f'} />
-              <RadialStat label="Completion" percent={completionRate} color={theme === 'dark' ? '#00f0ff' : '#b026ff'} />
+              <RadialStat label="Success Rate" percent={successRate} color={theme === 'dark' ? '#a8db4e' : '#168f84'} />
+              <RadialStat label="Completion" percent={completionRate} color={theme === 'dark' ? '#5fd4c4' : '#9d94d8'} />
             </div>
           </CardShell>
 
           <CardShell title="Campaign Tracker" icon={Megaphone}>
             {campaigns.length === 0 ? (
-              <p className="text-sm text-slate-400 dark:text-abyss-100 py-8 text-center">No campaigns yet.</p>
+              <p className="text-sm text-ink-400 dark:text-abyss-100 py-8 text-center">No campaigns yet.</p>
             ) : (
               <div className="space-y-3">
                 {campaigns.slice(0, 6).map((c) => {
@@ -364,7 +364,7 @@ export default function TenantDashboard() {
                       </div>
                       <div className="h-2 bg-brand-50 dark:bg-abyss-400/60 rounded-full overflow-hidden">
                         <div
-                          className="h-full rounded-full bg-brand-500 dark:bg-neon-purple dark:shadow-[0_0_8px_rgba(176,38,255,0.8)] transition-all"
+                          className="h-full rounded-full bg-brand-500 dark:bg-neon-purple transition-all"
                           style={{ width: `${Math.max(2, pct)}%` }}
                         />
                       </div>
@@ -385,7 +385,7 @@ export default function TenantDashboard() {
           )}
         </h2>
         {liveCalls.length === 0 ? (
-          <div className="text-sm text-ink-400 dark:text-abyss-50 py-8 text-center border border-dashed border-brand-200 dark:border-white/10 rounded-xl bg-white/60 dark:bg-abyss-500/30">
+          <div className="text-sm text-ink-400 dark:text-abyss-50 py-8 text-center border border-dashed border-line-strong dark:border-abyss-300/40 rounded-xl bg-white/60 dark:bg-abyss-500/30">
             No calls in progress right now.
           </div>
         ) : (

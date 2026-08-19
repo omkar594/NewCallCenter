@@ -17,8 +17,8 @@ export default function Flows() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-white">IVR Flows</h1>
-          <p className="text-sm text-slate-500 dark:text-abyss-50">The call scenarios your campaigns run against.</p>
+          <h1 className="text-xl font-semibold text-ink-900 dark:text-white">IVR Flows</h1>
+          <p className="text-sm text-ink-500 dark:text-abyss-50">The call scenarios your campaigns run against.</p>
         </div>
         <Link
           to="/app/flows/new"
@@ -42,7 +42,7 @@ export default function Flows() {
             key: 'name',
             label: 'Name',
             render: (f) => (
-              <Link to={`/app/flows/${f.id}`} className="text-slate-900 dark:text-white font-medium hover:text-brand-600 dark:hover:text-neon-cyan">
+              <Link to={`/app/flows/${f.id}`} className="text-ink-900 dark:text-white font-medium hover:text-brand-600 dark:hover:text-neon-cyan">
                 {f.name}
               </Link>
             )

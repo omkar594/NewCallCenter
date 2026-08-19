@@ -17,8 +17,8 @@ export default function SuperAdminCallLogs() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Call Logs</h1>
-        <p className="text-sm text-slate-500 dark:text-abyss-50">Most recent 100 calls, across every tenant.</p>
+        <h1 className="text-xl font-semibold text-ink-900 dark:text-white">Call Logs</h1>
+        <p className="text-sm text-ink-500 dark:text-abyss-50">Most recent 100 calls, across every tenant.</p>
       </div>
 
       {error && (
