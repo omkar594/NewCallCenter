@@ -16,6 +16,11 @@ const VALID_NODE_TYPES = new Set([
   'play', 'menu', 'collect_input', 'lookup', 'branch',
   'transfer_queue', 'sms', 'optout', 'amd_check', 'hangup'
 ]);
+// Types that legitimately have nowhere to go next: `hangup` ends the call, and `transfer_queue`
+// hands the channel to an agent queue and leaves the flow entirely - nothing after it would run.
+const TERMINAL_NODE_TYPES = new Set(['hangup', 'transfer_queue']);
+// Types that route by branch instead of a single next node (mirrors BRANCH_TYPES in the editor).
+const BRANCHING_NODE_TYPES = new Set(['menu', 'lookup', 'branch', 'amd_check']);
 // A prompt is mandatory for play/menu (they always speak something); every other type
 // (including collect_input/optout) can run with no prompt at all - see ivrFlowEngine.js's
 // `if (node.prompt_id)` guards on those two handlers.
@@ -70,6 +75,25 @@ function validateFlowBody(body) {
   for (const node of body.nodes) {
     if (node.next && !clientIds.has(node.next)) {
       errors.push(`node "${node.client_id}" references unknown next "${node.next}"`);
+    }
+
+    // A node that routes nowhere silently ends the call. The engine treats a null next_node_id
+    // as "stop and hang up", which is indistinguishable from forgetting to wire the node up -
+    // and that is exactly how a flow shipped where pressing 1 played the thank-you message and
+    // then dropped the call, with a hangup node sitting in the flow that nothing pointed at.
+    // Endings must be explicit, so every non-terminal node needs somewhere to go.
+    const branchCount = node.branches ? Object.keys(node.branches).length : 0;
+    if (!TERMINAL_NODE_TYPES.has(node.type) && !node.next && branchCount === 0) {
+      errors.push(
+        `node "${node.client_id}" (type "${node.type}") has no next node and no branches - the call would end there. ` +
+        `Point it at the node that should run next, or at a "hangup" node if ending the call is what you intend.`
+      );
+    }
+
+    // A branch-routing node with no branches can never move on: the engine re-runs the same node,
+    // so the caller hears the same prompt over and over until the flow's step cap gives up.
+    if (BRANCHING_NODE_TYPES.has(node.type) && branchCount === 0) {
+      errors.push(`node "${node.client_id}" (type "${node.type}") needs at least one branch - without one the call would repeat this step until it gives up`);
     }
     if (node.branches) {
       for (const [matchValue, branch] of Object.entries(node.branches)) {

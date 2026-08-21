@@ -105,16 +105,21 @@ async function handleMenu(node, state, flowCtx) {
   const playback = await ariService.playMedia(state.channelId, menuMedia);
   const digitTimeoutMs = node.config?.digit_timeout_ms || DEFAULT_MENU_DIGIT_TIMEOUT_MS;
 
-  const digitsPromise = ariService.gatherDigits(state.channelId, {
+  const digit = await ariService.gatherDigits(state.channelId, {
     maxDigits: 1,
     terminator: null,
     firstDigitTimeoutMs: digitTimeoutMs,
     interDigitTimeoutMs: digitTimeoutMs
   });
-  digitsPromise.then((digits) => {
-    if (digits) ariService.stopPlayback(playback.id).catch(() => {});
-  });
-  const digit = await digitsPromise;
+
+  // Stop the menu prompt and WAIT for Asterisk to confirm it stopped, before routing onward.
+  // This used to be fired without awaiting, so the next node began its own playback while this
+  // one was still being torn down over ARI - the caller kept hearing the menu prompt over (or
+  // instead of) the message they had just selected, which reads as "I pressed 1 and it started
+  // again from the beginning".
+  if (digit) {
+    await ariService.stopPlayback(playback.id).catch(() => {});
+  }
 
   if (!digit) {
     // Timeout / no digit pressed - re-offer the same menu rather than erroring, matching the

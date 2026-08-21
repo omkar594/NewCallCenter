@@ -67,8 +67,17 @@ const PIPER_LENGTH_SCALE = process.env.PIPER_LENGTH_SCALE || '1.0';
 // much closer to Piper's own flat-but-stable baseline (0.8) while still reading less robotic than
 // the un-tuned default. Override or add more languages via
 // PIPER_LANGUAGE_TUNING='{"hi-IN":{"noiseW":"0.9"}}' without a redeploy.
+//
+// lengthScale (speaking rate) is the lever that matters most for intelligibility, and it is the
+// one that was left untouched. The Hindi model runs its words together at 1.0 - Devanagari
+// conjuncts and the long compound words in a sales script come out slurred rather than
+// mispronounced. Slowing it slightly separates them without sounding laboured. This is a
+// judgement that has to be made by ear on a real phone call, not on laptop speakers: the 8kHz
+// narrowband codec a phone call runs through strips exactly the high frequencies that make
+// consonants distinct, so audio that is perfectly clear locally can still be mush down the line.
+// Tune it live with PIPER_LANGUAGE_TUNING (no redeploy) before changing this default.
 const DEFAULT_LANGUAGE_TUNING = {
-  'hi-IN': { noiseScale: '0.78', noiseW: '0.85' }
+  'hi-IN': { noiseScale: '0.78', noiseW: '0.85', lengthScale: '1.1' }
 };
 let languageTuningOverrides = {};
 try {
