@@ -505,13 +505,96 @@ async function initSchema() {
       -- reads this to decide Stasis(ivr_engine,...) vs. the plain campaign-broadcast-context).
       -- NULL means "ordinary single-prompt broadcast campaign", unchanged from before Workstream 8.
       ALTER TABLE voice_campaigns ADD COLUMN IF NOT EXISTS ivr_flow_id UUID REFERENCES ivr_flows(id) ON DELETE SET NULL;
+
+      -- Multi-tenant agent architecture. Mirrors database/migrations/001_multitenant_agents.sql
+      -- and database/schema.sql; all three must stay in step. This block is what makes the
+      -- change self-applying on deploy - it shipped as a standalone migration file first, which
+      -- meant a deployed backend hit "column agents_enabled does not exist" on every login until
+      -- someone remembered to run psql by hand. Schema changes in this project apply themselves.
+
+      -- What each client bought. Both default false: a capability nobody explicitly granted
+      -- should not arrive by omission. ivr_enabled defaults true because every existing client
+      -- already builds flows.
+      ALTER TABLE tenants ADD COLUMN IF NOT EXISTS agents_enabled   BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE tenants ADD COLUMN IF NOT EXISTS inbound_enabled  BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE tenants ADD COLUMN IF NOT EXISTS ivr_enabled      BOOLEAN NOT NULL DEFAULT true;
+      -- This client's own Asterisk queue, so a caller of Client A can never be answered by an
+      -- agent of Client B. Nullable here (unlike schema.sql, which can enforce NOT NULL from the
+      -- start) because existing rows are backfilled a few statements below.
+      ALTER TABLE tenants ADD COLUMN IF NOT EXISTS agent_queue_name VARCHAR(80);
+
+      -- Asterisk realtime queue families. Column names are fixed by app_queue - renaming them to
+      -- match this project's conventions makes Asterisk silently fail to resolve the queue.
+      CREATE TABLE IF NOT EXISTS queues (
+          name VARCHAR(128) PRIMARY KEY,
+          musicclass VARCHAR(128),
+          strategy VARCHAR(128),
+          timeout INTEGER,
+          retry INTEGER,
+          maxlen INTEGER,
+          joinempty VARCHAR(128),
+          leavewhenempty VARCHAR(128),
+          ringinuse VARCHAR(5),
+          setinterfacevar VARCHAR(5)
+      );
+      -- Intentionally never written to - membership is dynamic via AMI (persistentmembers=no),
+      -- with Postgres agent_profiles.current_status as the single source of truth. Asterisk still
+      -- requires the family to resolve when queues are realtime.
+      CREATE TABLE IF NOT EXISTS queue_members (
+          uniqueid SERIAL PRIMARY KEY,
+          queue_name VARCHAR(128),
+          interface VARCHAR(128),
+          membername VARCHAR(128),
+          penalty INTEGER,
+          paused INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_queue_members_queue_name ON queue_members(queue_name);
+
+      UPDATE tenants SET agent_queue_name = 'agents_' || replace(id::text, '-', '')
+       WHERE agent_queue_name IS NULL;
+
+      -- Anyone already running agents keeps them: the false default above must not silently
+      -- switch off a client who is live today.
+      UPDATE tenants t SET agents_enabled = true
+       WHERE NOT t.agents_enabled
+         AND EXISTS (SELECT 1 FROM users u WHERE u.tenant_id = t.id AND u.role = 'agent');
+
+      INSERT INTO queues (name, musicclass, strategy, timeout, retry, maxlen,
+                          joinempty, leavewhenempty, ringinuse, setinterfacevar)
+      SELECT t.agent_queue_name, 'default', 'leastrecent', 20, 3, 0, 'no', 'yes', 'no', 'yes'
+        FROM tenants t
+      ON CONFLICT (name) DO NOTHING;
+
+      -- "This tenant has no queue" means that client's callers reach nobody, so the invariant is
+      -- enforced in the database rather than only in createClient() - seed data, manual INSERTs
+      -- and any future onboarding path all get it for free.
+      CREATE OR REPLACE FUNCTION tenant_provision_queue() RETURNS TRIGGER AS $fn$
+      BEGIN
+          IF NEW.agent_queue_name IS NULL THEN
+              NEW.agent_queue_name := 'agents_' || replace(NEW.id::text, '-', '');
+          END IF;
+          INSERT INTO queues (name, musicclass, strategy, timeout, retry, maxlen,
+                              joinempty, leavewhenempty, ringinuse, setinterfacevar)
+          VALUES (NEW.agent_queue_name, 'default', 'leastrecent', 20, 3, 0, 'no', 'yes', 'no', 'yes')
+          ON CONFLICT (name) DO NOTHING;
+          RETURN NEW;
+      END;
+      $fn$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS trg_tenant_provision_queue ON tenants;
+      CREATE TRIGGER trg_tenant_provision_queue
+          BEFORE INSERT ON tenants
+          FOR EACH ROW EXECUTE FUNCTION tenant_provision_queue();
     `);
     console.log('[Database] ✅ Schema and Indexes automatically verified/created.');
   } catch (err) {
     console.warn('[Database] Auto-schema init warning:', err.message);
   }
 }
-initSchema();
+// Exported as a promise, not fire-and-forget: server.listen()'s callback awaits it so no request
+// can be served against a half-migrated schema. The AMI 'ami_ready' queue resync can still fire
+// first on a fast connect - it tolerates that and the next agent status change re-adds them.
+const schemaReady = initSchema();
 
 /**
  * Endpoint for Asterisk to verify inbound caller details and initiate ACD routing.
@@ -728,11 +811,17 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 5000;
 
-server.listen(PORT, async () => {
-  console.log(`Contact Center Server running on port ${PORT}`);
-  
-  // AMI and ARI are independent connections (different ports/protocols) - run them concurrently
-  // so a slow/stuck one never delays the other.
-  asteriskService.connect();
-  ariService.connect();
+// Wait for the schema bootstrap before accepting any traffic. Binding the port inside a
+// listen() callback would be too late - Node starts serving as soon as the socket is bound, so a
+// login arriving in that window would query columns initSchema() hasn't added yet and 500.
+// initSchema() swallows its own errors, so this always settles and can't wedge startup.
+schemaReady.finally(() => {
+  server.listen(PORT, () => {
+    console.log(`Contact Center Server running on port ${PORT}`);
+
+    // AMI and ARI are independent connections (different ports/protocols) - run them concurrently
+    // so a slow/stuck one never delays the other.
+    asteriskService.connect();
+    ariService.connect();
+  });
 });

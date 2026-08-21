@@ -106,13 +106,27 @@ export async function login(req, res) {
 // never drift apart and start reporting different capabilities for the same account.
 async function loadTenantFeatures(tenantId) {
   if (!tenantId) return null;
-  const t = await getTenantTelephony(tenantId);
-  if (!t) return null;
-  return {
-    agentsEnabled: t.agentsEnabled,
-    inboundEnabled: t.inboundEnabled,
-    ivrEnabled: t.ivrEnabled
-  };
+  try {
+    const t = await getTenantTelephony(tenantId);
+    if (!t) return null;
+    return {
+      agentsEnabled: t.agentsEnabled,
+      inboundEnabled: t.inboundEnabled,
+      ivrEnabled: t.ivrEnabled
+    };
+  } catch (err) {
+    // Never let this fail a login. Features only decide which menus render; letting a database
+    // hiccup here return 500 locks EVERY user out of the platform - including the super admin
+    // who would need to log in to fix whatever broke. That is exactly what happened when these
+    // columns were deployed ahead of the schema that defines them.
+    //
+    // Degrading to null is safe: the frontend then shows the full nav, and every one of these
+    // capabilities is independently enforced server-side by middleware/tenantFeature.js, which
+    // fails closed. Worst case a user clicks a menu item and gets a clean 403 instead of a
+    // hidden button.
+    console.error(`[Auth] Could not load plan features for tenant ${tenantId} - continuing without them:`, err.message);
+    return null;
+  }
 }
 
 // Lets the frontend re-read the current account and its tenant's capabilities without forcing a
