@@ -78,7 +78,7 @@ function pickPort(allowedPorts, campaignId) {
 // Best-effort mapping of AMI OriginateResponse "Reason" codes. Exact values vary slightly
 // across Asterisk versions, so unknown codes fall back to the generic 'failed' status rather
 // than guessing.
-function mapFailureReason(reason) {
+export function mapFailureReason(reason) {
   switch (String(reason)) {
     case '4': return 'busy';
     case '1':

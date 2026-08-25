@@ -395,6 +395,10 @@ async function runFlow(channelId, flowId, leadId, callerNumber) {
 ariService.on('StasisStart', (evt) => {
   const channelId = evt.channel?.id;
   const [flowId, leadId] = evt.args || [];
+  // Calls placed through the public call-control API share this Stasis application, and their
+  // conversation is driven by the client's webhooks rather than by a flow in our database.
+  // services/callControlService.js owns those; it tags them with 'cc' as the first argument.
+  if (flowId === 'cc') return;
   if (!channelId || !flowId) {
     console.error(`[IvrFlowEngine] StasisStart with no channel/flowId (args=${JSON.stringify(evt.args)}) - hanging up.`);
     if (channelId) ariService.hangupChannel(channelId).catch(() => {});

@@ -390,6 +390,60 @@ CREATE TABLE queue_members (
 );
 CREATE INDEX idx_queue_members_queue_name ON queue_members(queue_name);
 
+-- =========================================================================
+-- Public call-control API (/api/v1)
+-- =========================================================================
+-- For clients who run their own conversation logic and want only the telephone line underneath
+-- it: they place a call, we call their webhook on answer, and each reply they give is the
+-- instruction for the next turn. The inverse of the campaign product, where the conversation
+-- lives in these tables. Kept in step with the same block in backend/server.js's initSchema().
+
+-- Only the hash is stored. The key is shown once at creation and never again, so a copy of this
+-- table is not a set of working credentials.
+CREATE TABLE api_keys (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    key_hash VARCHAR(64) NOT NULL UNIQUE,
+    key_prefix VARCHAR(16) NOT NULL,
+    label VARCHAR(100),
+    last_used_at TIMESTAMP WITH TIME ZONE,
+    revoked_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_api_keys_tenant ON api_keys(tenant_id);
+
+-- Deliberately separate from "calls", which is modelled around agents and dispositions and
+-- carries none of the webhook state this needs.
+CREATE TABLE api_calls (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    to_number VARCHAR(32) NOT NULL,
+    from_number VARCHAR(32),
+    answer_url TEXT NOT NULL,
+    status_url TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'queued',
+    channel_id VARCHAR(64),
+    duration INTEGER DEFAULT 0,
+    hangup_cause VARCHAR(40),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    answered_at TIMESTAMP WITH TIME ZONE,
+    ended_at TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX idx_api_calls_tenant ON api_calls(tenant_id, created_at DESC);
+CREATE INDEX idx_api_calls_channel ON api_calls(channel_id);
+
+-- Asterisk can only play a local file, so client-hosted audio must be downloaded, transcoded and
+-- pushed to the box before it can be heard. Without this cache that would repeat on every play,
+-- mid-call, with the customer listening to the silence.
+CREATE TABLE api_audio_cache (
+    url_hash VARCHAR(64) PRIMARY KEY,
+    source_url TEXT NOT NULL,
+    asterisk_filename VARCHAR(128) NOT NULL,
+    bytes INTEGER,
+    last_used_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Every tenant gets its queue automatically, at the database level, because "this tenant has no
 -- queue" is not a recoverable state - it means that client's callers reach nobody. Doing it in a
 -- trigger rather than only in createClient() means seed data, manual INSERTs and any future

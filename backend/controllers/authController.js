@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import pool, { executeTenantQuery } from '../config/database.js';
 import { syncAgentQueueMembership } from '../services/queueMembershipService.js';
 import { ensureTenantQueue, getTenantTelephony, invalidateTenantCache } from '../services/tenantQueueService.js';
+import { generateApiKey } from '../middleware/apiKeyAuth.js';
 import { getOrProvisionAgentSipCredentials } from '../services/agentProvisioningService.js';
 
 const DEFAULT_TENANT_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
@@ -296,6 +297,67 @@ export async function getClients(req, res) {
   } catch (error) {
     console.error('getClients failed:', error);
     res.status(500).json({ error: 'Failed to list clients' });
+  }
+}
+
+// API keys for the public call-control API (/api/v1). These are how a client's own system
+// authenticates - it has no user account and never logs in.
+//
+// The key is returned exactly once, here, and only its hash is stored. There is deliberately no
+// endpoint that can read a key back: if it is lost, revoke it and issue another. That is a small
+// inconvenience once, against a database whose theft would otherwise hand over live credentials.
+export async function createApiKey(req, res) {
+  const { tenantId } = req.params;
+  const { label } = req.body || {};
+  try {
+    const tenant = await pool.query('SELECT id, name FROM tenants WHERE id = $1', [tenantId]);
+    if (!tenant.rows[0]) return res.status(404).json({ error: 'Tenant not found' });
+
+    const { raw, hash, prefix } = generateApiKey();
+    const result = await pool.query(`
+      INSERT INTO api_keys (tenant_id, key_hash, key_prefix, label)
+      VALUES ($1, $2, $3, $4) RETURNING id, key_prefix, label, created_at
+    `, [tenantId, hash, prefix, label || null]);
+
+    res.status(201).json({
+      ...result.rows[0],
+      api_key: raw,
+      warning: 'Copy this key now - it cannot be shown again.'
+    });
+  } catch (error) {
+    console.error('createApiKey failed:', error);
+    res.status(500).json({ error: 'Failed to create API key' });
+  }
+}
+
+// Lists keys by prefix and label only - never the key itself, which is not recoverable.
+export async function listApiKeys(req, res) {
+  try {
+    const result = await pool.query(`
+      SELECT id, key_prefix, label, created_at, last_used_at, revoked_at
+        FROM api_keys WHERE tenant_id = $1 ORDER BY created_at DESC
+    `, [req.params.tenantId]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('listApiKeys failed:', error);
+    res.status(500).json({ error: 'Failed to list API keys' });
+  }
+}
+
+// Revoked rather than deleted, so the record of a key having existed - and when it was last
+// used - survives for an audit. apiKeyAuth rejects anything with revoked_at set.
+export async function revokeApiKey(req, res) {
+  try {
+    const result = await pool.query(`
+      UPDATE api_keys SET revoked_at = NOW()
+       WHERE id = $1 AND tenant_id = $2 AND revoked_at IS NULL
+      RETURNING id, key_prefix
+    `, [req.params.keyId, req.params.tenantId]);
+    if (!result.rows[0]) return res.status(404).json({ error: 'Key not found or already revoked' });
+    res.json({ message: 'API key revoked', ...result.rows[0] });
+  } catch (error) {
+    console.error('revokeApiKey failed:', error);
+    res.status(500).json({ error: 'Failed to revoke API key' });
   }
 }
 

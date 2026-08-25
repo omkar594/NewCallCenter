@@ -1,5 +1,5 @@
 import express from 'express';
-import { login, logout, getMe, createAgent, getAgents, getMySipCredentials, createClient, getClients, updateClientFeatures, deactivateClient, reactivateClient, addCredits, getCreditTransactions, getMyCredits } from '../controllers/authController.js';
+import { login, logout, getMe, createAgent, getAgents, getMySipCredentials, createClient, getClients, updateClientFeatures, createApiKey, listApiKeys, revokeApiKey, deactivateClient, reactivateClient, addCredits, getCreditTransactions, getMyCredits } from '../controllers/authController.js';
 import { requireTenantFeature } from '../middleware/tenantFeature.js';
 import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 
@@ -19,6 +19,11 @@ router.post('/clients', authenticateToken, authorizeRoles(['super_admin']), crea
 router.get('/clients', authenticateToken, authorizeRoles(['super_admin']), getClients);
 // Change what a client's plan includes after onboarding - a client upgrading from outbound-only
 // to live agents shouldn't require re-onboarding them.
+// API keys for the public call-control API. Operator-only: a key placed on this endpoint can
+// spend a client's credits on live calls.
+router.get('/clients/:tenantId/api-keys', authenticateToken, authorizeRoles(['super_admin']), listApiKeys);
+router.post('/clients/:tenantId/api-keys', authenticateToken, authorizeRoles(['super_admin']), createApiKey);
+router.delete('/clients/:tenantId/api-keys/:keyId', authenticateToken, authorizeRoles(['super_admin']), revokeApiKey);
 router.patch('/clients/:tenantId/features', authenticateToken, authorizeRoles(['super_admin']), updateClientFeatures);
 // Soft-delete: locks out logins, releases SIM ports, cancels active campaigns - keeps all
 // historical data (flows/campaigns/call logs) intact. See authController.js for exactly what

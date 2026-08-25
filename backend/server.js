@@ -28,6 +28,7 @@ import campaignRoutes from './routes/campaign.js';
 import callRoutes from './routes/call.js';
 import analyticsRoutes from './routes/analytics.js';
 import ivrRoutes from './routes/ivr.js';
+import publicApiRoutes from './routes/publicApi.js';
 import { getTenantTelephony } from './services/tenantQueueService.js';
 
 // Start Outbound Campaign Queue Worker
@@ -41,6 +42,8 @@ import './services/campaignTelemetryListener.js';
 // listeners. Side-effect import only; the actual ariService.connect() call happens in
 // server.listen()'s callback below, alongside the existing AMI connect.
 import './services/ivrFlowEngine.js';
+// Drives calls placed through /api/v1, whose conversation lives in the client's system.
+import './services/callControlService.js';
 
 dotenv.config();
 
@@ -102,6 +105,9 @@ app.use('/api/campaigns', campaignRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/ivr', ivrRoutes);
+// The public call-control API. Authenticated by API key rather than a staff login - see
+// routes/publicApi.js for why it is deliberately kept in its own router.
+app.use('/api/v1', publicApiRoutes);
 
 // Auto-initialize database tables if missing (essential for cloud hosting like Render).
 // Kept in sync with database/schema.sql's voice_campaigns/campaign_leads definitions -
@@ -585,6 +591,60 @@ async function initSchema() {
       CREATE TRIGGER trg_tenant_provision_queue
           BEFORE INSERT ON tenants
           FOR EACH ROW EXECUTE FUNCTION tenant_provision_queue();
+
+      -- ===================================================================
+      -- Public call-control API (/api/v1)
+      -- ===================================================================
+      -- Serves clients who run their own conversation logic and want only the telephone line
+      -- underneath it - they place a call, we call their webhook when it is answered, and every
+      -- response they give us is the instruction for the next turn. The inverse of the campaign
+      -- product, where the conversation lives in our database.
+
+      -- Only the hash is stored. The key itself is shown once at creation and never again, so a
+      -- copy of this table is not a set of working credentials.
+      CREATE TABLE IF NOT EXISTS api_keys (
+          id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          key_hash VARCHAR(64) NOT NULL UNIQUE,
+          key_prefix VARCHAR(16) NOT NULL,
+          label VARCHAR(100),
+          last_used_at TIMESTAMP WITH TIME ZONE,
+          revoked_at TIMESTAMP WITH TIME ZONE,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_api_keys_tenant ON api_keys(tenant_id);
+
+      -- Deliberately separate from "calls", which is modelled around agents and dispositions and
+      -- carries none of the webhook state this needs.
+      CREATE TABLE IF NOT EXISTS api_calls (
+          id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          to_number VARCHAR(32) NOT NULL,
+          from_number VARCHAR(32),
+          answer_url TEXT NOT NULL,
+          status_url TEXT,
+          status VARCHAR(20) NOT NULL DEFAULT 'queued',
+          channel_id VARCHAR(64),
+          duration INTEGER DEFAULT 0,
+          hangup_cause VARCHAR(40),
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          answered_at TIMESTAMP WITH TIME ZONE,
+          ended_at TIMESTAMP WITH TIME ZONE
+      );
+      CREATE INDEX IF NOT EXISTS idx_api_calls_tenant ON api_calls(tenant_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_api_calls_channel ON api_calls(channel_id);
+
+      -- Asterisk can only play a local file, so a client's hosted audio has to be downloaded,
+      -- transcoded and pushed to the box before it can be heard. Without this cache that would
+      -- happen again on every single play, mid-call, with the caller listening to the silence.
+      CREATE TABLE IF NOT EXISTS api_audio_cache (
+          url_hash VARCHAR(64) PRIMARY KEY,
+          source_url TEXT NOT NULL,
+          asterisk_filename VARCHAR(128) NOT NULL,
+          bytes INTEGER,
+          last_used_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
     `);
     console.log('[Database] ✅ Schema and Indexes automatically verified/created.');
   } catch (err) {
