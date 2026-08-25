@@ -219,10 +219,48 @@ async function finalizeLead(leadId, campaignId, dialStatus, durationSec, tenantI
     // detail/list pages' processed_leads/total_leads progress display).
     wasRequeued = leadResult.rows[0]?.dial_status === 'pending';
     if (!wasRequeued) {
-      await client.query(
-        `UPDATE voice_campaigns SET processed_leads = processed_leads + 1 WHERE id = $1`,
+      // Marks the campaign finished on the lead that empties it. Until now nothing ever moved a
+      // campaign out of 'running': the only exits were credit exhaustion and tenant deactivation,
+      // both of which land on 'cancelled', so a campaign that dialled every lead successfully sat
+      // at 'running' forever and every finished campaign still read as in-progress on the
+      // dashboards.
+      //
+      // The finished test is "no lead of this campaign is still pending or processing", asked of
+      // campaign_leads directly rather than comparing processed_leads to total_leads. The counter
+      // is a display value maintained alongside the data; if it ever drifts, comparing against it
+      // would strand a campaign at 'running' or - worse - declare it finished while leads remain,
+      // which would then be silently skipped by claimNextPendingLead(). The lead rows are the
+      // truth. This lead's own row is already terminal within this transaction, so it is
+      // correctly excluded by the check.
+      //
+      // Only active states transition. A paused campaign stays paused (its leads are pending by
+      // design and it must resume, not complete), and a cancelled one stays cancelled - reaching
+      // 'completed' from either would erase the reason it stopped.
+      const campaignResult = await client.query(
+        `UPDATE voice_campaigns vc
+            SET processed_leads = processed_leads + 1,
+                status = CASE
+                  WHEN vc.status IN ('running', 'pending', 'preparing')
+                   AND NOT EXISTS (
+                         SELECT 1 FROM campaign_leads cl
+                          WHERE cl.campaign_id = vc.id
+                            AND cl.dial_status IN ('pending', 'processing')
+                       )
+                  THEN 'completed'
+                  ELSE vc.status
+                END,
+                updated_at = NOW()
+          WHERE vc.id = $1
+          RETURNING status, processed_leads, total_leads`,
         [campaignId]
       );
+      const campaign = campaignResult.rows[0];
+      if (campaign?.status === 'completed') {
+        logger.info(
+          { campaignId, processed: campaign.processed_leads, total: campaign.total_leads },
+          '[Worker] Campaign complete - every lead reached a final state'
+        );
+      }
     }
 
     if (credits > 0 && tenantId) {
