@@ -138,7 +138,7 @@ async function finishCall(apiCallId, status, hangupCause = null) {
                              THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - answered_at))::int)
                              ELSE 0 END
        WHERE id = $1 AND ended_at IS NULL
-      RETURNING tenant_id, to_number, duration, status, status_url
+      RETURNING tenant_id, to_number, duration, status, status_url, hangup_cause
     `, [apiCallId, status, hangupCause]);
 
     const call = rows[0];
@@ -166,7 +166,11 @@ async function finishCall(apiCallId, status, hangupCause = null) {
         status: call.status,
         to: call.to_number,
         duration: call.duration,
-        hangup_cause: call.hangup_cause
+        // Explicit null rather than undefined: JSON.stringify drops undefined keys entirely, so
+        // a client coding against a documented field would simply never see it. This field was
+        // missing from the RETURNING clause above and therefore never reached anyone - worst of
+        // all on a failed call, which is exactly when the client needs to know the reason.
+        hangup_cause: call.hangup_cause ?? null
       }, { timeout: WEBHOOK_TIMEOUT_MS, maxRedirects: 0 })
         .catch((err) => console.warn(`[CallControl] status_url failed: ${err.message}`));
     }
