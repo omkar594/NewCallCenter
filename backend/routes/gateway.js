@@ -1,5 +1,5 @@
 import express from 'express';
-import { getGateways, createGateway, getPortAllocations, allocatePort, setTenantPorts, getLiveGatewayStatus } from '../controllers/gatewayController.js';
+import { setPortSim, getGateways, createGateway, getPortAllocations, allocatePort, setTenantPorts, getLiveGatewayStatus } from '../controllers/gatewayController.js';
 import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -17,6 +17,9 @@ router.post('/ports/allocate', authenticateToken, authorizeRoles(['super_admin']
 // Sets a tenant's port allocation to exactly the given list in one call - increasing or
 // decreasing their ports is the same request, just a longer or shorter portNumbers array.
 router.put('/tenants/:tenantId/ports', authenticateToken, authorizeRoles(['super_admin']), setTenantPorts);
+// Operator records the SIM's mobile number for a port, and gets back the dialling prefix to put
+// in the gateway's own routing rule for that port.
+router.put('/:gatewayId/ports/:portNumber/sim', authenticateToken, authorizeRoles(['super_admin']), setPortSim);
 router.get('/:gatewayId/live', authenticateToken, getLiveGatewayStatus);
 
 export default router;

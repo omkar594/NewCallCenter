@@ -7,6 +7,7 @@ import { prefetchAudio } from '../services/remoteAudioService.js';
 import { mapFailureReason } from '../bulkCampaignWorker.js';
 import { normalizePhoneNumber } from '../utils/phoneNormalizer.js';
 import { CC_MARKER } from '../services/callControlService.js';
+import { pickPortForTenant } from '../services/portRoutingService.js';
 
 // The public call-control API - the only endpoints an outside company ever sees.
 //
@@ -61,24 +62,43 @@ router.post('/calls', async (req, res) => {
       return res.status(402).json({ error: 'Insufficient credit balance' });
     }
 
+    // Choose the SIM port before dialling, so the number this call goes out on is known up front
+    // rather than being whatever the gateway silently picked. The port is encoded as a dialling
+    // prefix the gateway maps straight back to it.
+    const port = await pickPortForTenant(req.tenantId);
+    if (!port) {
+      return res.status(409).json({
+        error: 'No SIM lines are allocated to your account. Contact your account manager.'
+      });
+    }
+
+    // from_number is the SIM's own number, not the caller-supplied `from`. On a GSM line the
+    // network presents the SIM's number regardless of what caller ID we ask for, so reporting
+    // anything else would be telling the client something untrue about their own call.
     const inserted = await pool.query(`
-      INSERT INTO api_calls (tenant_id, to_number, from_number, answer_url, status_url, status)
-      VALUES ($1, $2, $3, $4, $5, 'queued') RETURNING id, status
-    `, [req.tenantId, toNumber, from || null, answerUrl, statusUrl || null]);
+      INSERT INTO api_calls (tenant_id, to_number, from_number, port_number, answer_url, status_url, status)
+      VALUES ($1, $2, $3, $4, $5, $6, 'queued') RETURNING id, status
+    `, [req.tenantId, toNumber, port.simNumber, port.portNumber, answerUrl, statusUrl || null]);
     const call = inserted.rows[0];
 
     const { actionId, ackPromise } = asteriskService.originateAsync(
-      `PJSIP/${toNumber}@DinstarTrunk`,
+      `PJSIP/${port.prefix}${toNumber}@DinstarTrunk`,
       toNumber,
       API_CALL_CONTEXT,
       1,
       { API_CALL_ID: call.id },
-      from || 'VoiceAPI'
+      port.simNumber || 'VoiceAPI'
     );
 
     // Answered immediately - the caller gets their id now and the outcome later. Everything
     // below happens after the response has been sent.
-    res.status(201).json({ call_id: call.id, status: 'queued', to: toNumber });
+    res.status(201).json({
+      call_id: call.id,
+      status: 'queued',
+      to: toNumber,
+      from: port.simNumber,
+      port: port.portNumber
+    });
 
     ackPromise
       .then(async (ack) => {
@@ -153,8 +173,8 @@ router.get('/calls', async (req, res) => {
 
   try {
     const rows = await pool.query(`
-      SELECT id AS call_id, to_number AS "to", from_number AS "from", status, duration,
-             hangup_cause, created_at, answered_at, ended_at
+      SELECT id AS call_id, to_number AS "to", from_number AS "from", port_number AS port,
+             status, duration, hangup_cause, created_at, answered_at, ended_at
         FROM api_calls
        WHERE tenant_id = $1 ${where} ${statusFilter}
        ORDER BY created_at DESC
@@ -256,8 +276,8 @@ router.get('/reports/summary', async (req, res) => {
 router.get('/calls/:id', async (req, res) => {
   try {
     const { rows } = await pool.query(`
-      SELECT id AS call_id, to_number AS "to", from_number AS "from", status, duration,
-             hangup_cause, created_at, answered_at, ended_at
+      SELECT id AS call_id, to_number AS "to", from_number AS "from", port_number AS port,
+             status, duration, hangup_cause, created_at, answered_at, ended_at
         FROM api_calls WHERE id = $1 AND tenant_id = $2
     `, [req.params.id, req.tenantId]);
 

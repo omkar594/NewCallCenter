@@ -179,6 +179,29 @@ export async function setTenantPorts(req, res) {
 }
 
 // Query real-time port information from the physical Dinstar hardware gateway
+// Records which mobile number is in which port. The gateway cannot tell us this - it knows the
+// SIM is registered but not its number - so it is entered by whoever physically fits the SIM.
+//
+// Without it, a client integrating over the public API gets a null "from" on every call: we know
+// which port carried it, but not what number that port answers to.
+export async function setPortSim(req, res) {
+  const { gatewayId, portNumber } = req.params;
+  const { simNumber } = req.body || {};
+  try {
+    const row = await setPortSimNumber(gatewayId, Number(portNumber), simNumber);
+    if (!row) return res.status(404).json({ error: 'No such port on this gateway' });
+    res.json({
+      port_number: row.port_number,
+      sim_number: row.sim_number,
+      // Surfaced so the operator can copy it straight into the gateway's IP->Tel routing rule.
+      dialling_prefix: prefixForPort(row.port_number)
+    });
+  } catch (error) {
+    console.error('setPortSim failed:', error);
+    res.status(500).json({ error: 'Failed to record SIM number' });
+  }
+}
+
 export async function getLiveGatewayStatus(req, res) {
   const { gatewayId } = req.params;
 

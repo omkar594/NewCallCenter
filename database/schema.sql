@@ -104,6 +104,10 @@ CREATE TABLE gateway_ports (
     port_number INTEGER NOT NULL CHECK (port_number BETWEEN 0 AND 31),
     tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL, -- Mapped tenant (Null means unassigned)
     mapped_trunk_name VARCHAR(100), -- Maps to Asterisk trunk ClientA_Trunk, ClientB_Trunk
+    sim_number VARCHAR(32), -- Mobile number of the SIM in this port. The gateway does not report
+                            -- it, so it is recorded here by whoever fits the SIM - a client
+                            -- integrating over the public API needs to know which of their
+                            -- numbers a call went out on.
     status VARCHAR(50) DEFAULT 'idle',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (gateway_id, port_number)
@@ -423,6 +427,8 @@ CREATE TABLE api_calls (
     status_url TEXT,
     status VARCHAR(20) NOT NULL DEFAULT 'queued',
     channel_id VARCHAR(64),
+    port_number INTEGER, -- Which gateway port carried the call. Known because we choose it via a
+                         -- dialling prefix, rather than letting the gateway pick silently.
     duration INTEGER DEFAULT 0,
     hangup_cause VARCHAR(40),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,

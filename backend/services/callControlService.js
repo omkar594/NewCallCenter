@@ -138,7 +138,7 @@ async function finishCall(apiCallId, status, hangupCause = null) {
                              THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - answered_at))::int)
                              ELSE 0 END
        WHERE id = $1 AND ended_at IS NULL
-      RETURNING tenant_id, to_number, duration, status, status_url, hangup_cause
+      RETURNING tenant_id, to_number, from_number, port_number, duration, status, status_url, hangup_cause
     `, [apiCallId, status, hangupCause]);
 
     const call = rows[0];
@@ -165,6 +165,10 @@ async function finishCall(apiCallId, status, hangupCause = null) {
         event: 'completed',
         status: call.status,
         to: call.to_number,
+        // Which of the client's own numbers this call went out on. They asked for it, and it is
+        // only knowable because the port was chosen before dialling rather than by the gateway.
+        from: call.from_number ?? null,
+        port: call.port_number ?? null,
         duration: call.duration,
         // Explicit null rather than undefined: JSON.stringify drops undefined keys entirely, so
         // a client coding against a documented field would simply never see it. This field was

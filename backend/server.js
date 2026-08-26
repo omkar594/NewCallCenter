@@ -637,6 +637,16 @@ async function initSchema() {
       -- Asterisk can only play a local file, so a client's hosted audio has to be downloaded,
       -- transcoded and pushed to the box before it can be heard. Without this cache that would
       -- happen again on every single play, mid-call, with the caller listening to the silence.
+      -- The mobile number of the SIM sitting in each gateway port. The gateway itself does not
+      -- report this, and a client integrating over the public API needs to know which of their
+      -- numbers a call went out on, so it is recorded here by whoever fits the SIM.
+      ALTER TABLE gateway_ports ADD COLUMN IF NOT EXISTS sim_number VARCHAR(32);
+
+      -- Which port a public-API call was actually placed on. Known because WE choose it - the
+      -- number is dialled with a routing prefix the gateway maps to that exact port - rather than
+      -- letting the gateway pick one and never telling us which.
+      ALTER TABLE api_calls ADD COLUMN IF NOT EXISTS port_number INTEGER;
+
       CREATE TABLE IF NOT EXISTS api_audio_cache (
           url_hash VARCHAR(64) PRIMARY KEY,
           source_url TEXT NOT NULL,
