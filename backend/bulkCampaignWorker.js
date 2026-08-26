@@ -6,6 +6,7 @@ import { creditsForDuration } from './utils/creditCalculator.js';
 import logger from './utils/logger.js';
 import { captureException } from './utils/sentry.js';
 import { getQueueName } from './services/tenantQueueService.js';
+import { pickPortForTenant } from './services/portRoutingService.js';
 
 dotenv.config();
 
@@ -52,28 +53,6 @@ const MAX_DIAL_ATTEMPTS = parseInt(process.env.MAX_DIAL_ATTEMPTS) || 3;
 const TELEMETRY_FRESHNESS_SEC = parseInt(process.env.TELEMETRY_FRESHNESS_SEC) || 90;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-// Track Round-Robin counters for campaigns with specific allowed ports. This remains an
-// informational hint only (logged + passed as a channel variable) - actual per-port SIM
-// pinning is a Dinstar-gateway-side routing decision, not something this codebase controls.
-const campaignPortCounters = {};
-
-function pickPort(allowedPorts, campaignId) {
-  if (!allowedPorts || allowedPorts === 'all') {
-    return { targetPort: null, label: 'All Gateway Ports (Round-Robin)' };
-  }
-  const portList = String(allowedPorts).split(',').map(p => p.trim()).filter(Boolean);
-  if (portList.length === 0) {
-    return { targetPort: null, label: 'All Gateway Ports (Round-Robin)' };
-  }
-  if (campaignPortCounters[campaignId] === undefined) {
-    campaignPortCounters[campaignId] = 0;
-  }
-  const idx = campaignPortCounters[campaignId] % portList.length;
-  const targetPort = portList[idx];
-  campaignPortCounters[campaignId]++;
-  return { targetPort, label: `Selected Port ${targetPort} (out of restricted ports: [${portList.join(', ')}])` };
-}
 
 // Best-effort mapping of AMI OriginateResponse "Reason" codes. Exact values vary slightly
 // across Asterisk versions, so unknown codes fall back to the generic 'failed' status rather
@@ -317,10 +296,24 @@ async function finalizeLead(leadId, campaignId, dialStatus, durationSec, tenantI
 // duration of the call, so the concurrency gate in tick() genuinely reflects channel busy-ness.
 async function dispatchLead(lead) {
   const cleanPhoneNumber = normalizePhoneNumber(lead.phone_number);
-  const { targetPort, label } = pickPort(lead.allowed_ports, lead.campaign_id);
-  const channelName = `PJSIP/${cleanPhoneNumber}@DinstarTrunk`;
 
-  logger.info({ leadId: lead.lead_id, phone: cleanPhoneNumber, portStrategy: label }, '[Worker] Dispatching lead');
+  // The port is chosen here and encoded as a dialling prefix the gateway maps back to that exact
+  // line. Previously this function computed a targetPort and passed it as a channel variable that
+  // NOTHING read - the gateway picked whatever port it liked, so a campaign restricted to
+  // specific lines was not actually restricted, and one client's campaign could dial out on
+  // another client's SIM. Now the restriction is real.
+  const port = await pickPortForTenant(lead.tenant_id, lead.allowed_ports);
+  if (!port) {
+    logger.error({ leadId: lead.lead_id, tenantId: lead.tenant_id }, '[Worker] No SIM lines allocated - cannot dial');
+    await finalizeLead(lead.lead_id, lead.campaign_id, 'failed', 0, lead.tenant_id);
+    return;
+  }
+  const channelName = `PJSIP/${port.prefix}${cleanPhoneNumber}@DinstarTrunk`;
+
+  logger.info(
+    { leadId: lead.lead_id, phone: cleanPhoneNumber, port: port.portNumber, from: port.simNumber },
+    '[Worker] Dispatching lead'
+  );
 
   // Workstream 8: a campaign with voice_campaigns.ivr_flow_id set dials into the new
   // ivr-campaign-context (Stasis-driven, interpreted by ivrFlowEngine.js) instead of the plain
@@ -338,7 +331,7 @@ async function dispatchLead(lead) {
   const originateVars = {
     LEAD_ID: lead.lead_id,
     CAMP_ID: lead.campaign_id,
-    TARGET_PORT: targetPort || '',
+    TARGET_PORT: String(port.portNumber),
     AGENT_QUEUE: (await getQueueName(lead.tenant_id)) || ''
   };
   if (lead.ivr_flow_id) {

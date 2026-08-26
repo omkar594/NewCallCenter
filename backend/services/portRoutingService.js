@@ -31,23 +31,44 @@ const cursorByTenant = new Map();
 /**
  * Picks the next port for a tenant's outbound call.
  *
+ * @param {string|null} allowedPorts - optional campaign restriction, 'all' or '1,2,3'
  * @returns {Promise<{portNumber:number, simNumber:string|null, prefix:string}|null>}
  *   null when the tenant has no ports allocated - the caller must treat that as "cannot place
  *   this call" rather than dialling without a prefix, because a call with no prefix goes out on
  *   whichever port the gateway feels like and is then unattributable.
  */
-export async function pickPortForTenant(tenantId) {
-  const { rows } = await pool.query(`
+export async function pickPortForTenant(tenantId, allowedPorts = null) {
+  const { rows: all } = await pool.query(`
     SELECT port_number, sim_number
       FROM gateway_ports
      WHERE tenant_id = $1
      ORDER BY port_number
   `, [tenantId]);
 
+  // A campaign may restrict itself to a subset of the client's lines. Intersect rather than
+  // trust the campaign's list on its own: a stale or hand-edited allowed_ports must never let a
+  // campaign dial out on a port belonging to somebody else.
+  let rows = all;
+  if (allowedPorts && allowedPorts !== 'all') {
+    const wanted = new Set(
+      String(allowedPorts).split(',').map((p) => parseInt(p.trim(), 10)).filter(Number.isInteger)
+    );
+    if (wanted.size > 0) {
+      const filtered = all.filter((r) => wanted.has(r.port_number));
+      // Falling back to the full allocation is deliberate: a campaign whose restricted ports have
+      // since been reassigned should keep dialling on the client's remaining lines rather than
+      // stop dead, which from the outside looks like the dialler having silently died.
+      if (filtered.length > 0) rows = filtered;
+    }
+  }
+
   if (rows.length === 0) return null;
 
-  const next = (cursorByTenant.get(tenantId) ?? 0) % rows.length;
-  cursorByTenant.set(tenantId, next + 1);
+  // Keyed by tenant AND restriction: two campaigns on different subsets of the same client's
+  // lines would otherwise share one counter and skip each other's ports unevenly.
+  const cursorKey = `${tenantId}|${allowedPorts || 'all'}`;
+  const next = (cursorByTenant.get(cursorKey) ?? 0) % rows.length;
+  cursorByTenant.set(cursorKey, next + 1);
   const chosen = rows[next];
 
   return {
