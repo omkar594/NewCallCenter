@@ -6,7 +6,6 @@ import { creditsForDuration } from './utils/creditCalculator.js';
 import logger from './utils/logger.js';
 import { captureException } from './utils/sentry.js';
 import { getQueueName } from './services/tenantQueueService.js';
-import { pickPortForTenant } from './services/portRoutingService.js';
 
 dotenv.config();
 
@@ -297,23 +296,9 @@ async function finalizeLead(leadId, campaignId, dialStatus, durationSec, tenantI
 async function dispatchLead(lead) {
   const cleanPhoneNumber = normalizePhoneNumber(lead.phone_number);
 
-  // The port is chosen here and encoded as a dialling prefix the gateway maps back to that exact
-  // line. Previously this function computed a targetPort and passed it as a channel variable that
-  // NOTHING read - the gateway picked whatever port it liked, so a campaign restricted to
-  // specific lines was not actually restricted, and one client's campaign could dial out on
-  // another client's SIM. Now the restriction is real.
-  const port = await pickPortForTenant(lead.tenant_id, lead.allowed_ports);
-  if (!port) {
-    logger.error({ leadId: lead.lead_id, tenantId: lead.tenant_id }, '[Worker] No SIM lines allocated - cannot dial');
-    await finalizeLead(lead.lead_id, lead.campaign_id, 'failed', 0, lead.tenant_id);
-    return;
-  }
-  const channelName = `PJSIP/${port.prefix}${cleanPhoneNumber}@DinstarTrunk`;
+  const channelName = `PJSIP/${cleanPhoneNumber}@DinstarTrunk`;
 
-  logger.info(
-    { leadId: lead.lead_id, phone: cleanPhoneNumber, port: port.portNumber, from: port.simNumber },
-    '[Worker] Dispatching lead'
-  );
+  logger.info({ leadId: lead.lead_id, phone: cleanPhoneNumber }, '[Worker] Dispatching lead');
 
   // Workstream 8: a campaign with voice_campaigns.ivr_flow_id set dials into the new
   // ivr-campaign-context (Stasis-driven, interpreted by ivrFlowEngine.js) instead of the plain
@@ -331,7 +316,7 @@ async function dispatchLead(lead) {
   const originateVars = {
     LEAD_ID: lead.lead_id,
     CAMP_ID: lead.campaign_id,
-    TARGET_PORT: String(port.portNumber),
+    TARGET_PORT: '',
     AGENT_QUEUE: (await getQueueName(lead.tenant_id)) || ''
   };
   if (lead.ivr_flow_id) {
