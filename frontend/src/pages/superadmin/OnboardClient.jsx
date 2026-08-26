@@ -89,11 +89,18 @@ export default function OnboardClient() {
         <p className="text-sm text-ink-500 dark:text-abyss-50">Creates a new isolated tenant, its first admin login, and grants SIM ports - all atomically.</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4 bg-surface dark:bg-abyss-500 border border-line dark:border-abyss-300/40 rounded-xl p-6">
-        <Field label="Tenant name" value={form.tenantName} onChange={update('tenantName')} placeholder="Apex Bank" />
-        <Field label="Subdomain" value={form.subdomain} onChange={update('subdomain')} placeholder="apexbank" />
-        <Field label="Admin username" value={form.adminUsername} onChange={update('adminUsername')} placeholder="apexbank_admin" />
-        <Field label="Admin password" type="password" value={form.adminPassword} onChange={update('adminPassword')} />
+      <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4 bg-surface dark:bg-abyss-500 border border-line dark:border-abyss-300/40 rounded-xl p-6">
+        <Field label="Tenant name" value={form.tenantName} onChange={update('tenantName')} placeholder="Apex Bank" autoComplete="off" />
+        <Field label="Subdomain" value={form.subdomain} onChange={update('subdomain')} placeholder="apexbank" autoComplete="off" />
+        {/* autoComplete is deliberate. A username + password pair on a page looks like a sign-in
+            form to the browser, so it helpfully fills in the OPERATOR's own saved credentials -
+            which then either fails onboarding with "bootstrap_admin already exists", or worse,
+            quietly creates a client account carrying the super admin's password. Chrome ignores
+            plain "off" on password inputs but does honour "new-password". */}
+        <Field label="Admin username" value={form.adminUsername} onChange={update('adminUsername')}
+               placeholder="apexbank_admin" autoComplete="off" name="tenant-admin-username" />
+        <Field label="Admin password" type="password" value={form.adminPassword} onChange={update('adminPassword')}
+               autoComplete="new-password" name="tenant-admin-password" />
 
         <div>
           <label className="block text-sm font-medium text-ink-700 dark:text-slate-200 mb-1">What this client gets</label>
