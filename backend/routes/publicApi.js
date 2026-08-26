@@ -190,16 +190,26 @@ router.get('/reports/summary', async (req, res) => {
     const { rows } = await pool.query(`
       SELECT
         count(*)::int                                                       AS total,
-        count(*) FILTER (WHERE status = 'completed')::int                   AS answered,
+        -- "Answered" means the person actually picked up, which is answered_at being set - NOT
+        -- that the call finished cleanly. A call the callee answered and which then ended on a
+        -- webhook error was still answered; counting only 'completed' here would report it as
+        -- unreached and understate what the client's list actually achieved.
+        count(*) FILTER (WHERE answered_at IS NOT NULL)::int                 AS answered,
+        count(*) FILTER (WHERE status = 'completed')::int                    AS completed,
         count(*) FILTER (WHERE status = 'busy')::int                        AS busy,
         count(*) FILTER (WHERE status = 'no-answer')::int                   AS no_answer,
         count(*) FILTER (WHERE status = 'failed')::int                      AS failed,
         count(*) FILTER (WHERE status IN ('queued','answered'))::int        AS in_progress,
-        -- Every duration below is connected time only. A call that never connected contributes
-        -- zero, so these totals can never be inflated by ringing.
-        COALESCE(sum(duration) FILTER (WHERE status = 'completed'), 0)::int  AS total_seconds,
-        COALESCE(max(duration) FILTER (WHERE status = 'completed'), 0)::int  AS longest_seconds,
-        COALESCE(round(avg(duration) FILTER (WHERE status = 'completed')), 0)::int AS average_seconds
+        -- Connected time, for every call where somebody actually picked up. duration is measured
+        -- from answer to hang-up, so ringing is already excluded and a call that never connected
+        -- contributes zero.
+        COALESCE(sum(duration) FILTER (WHERE answered_at IS NOT NULL), 0)::int  AS total_seconds,
+        COALESCE(max(duration) FILTER (WHERE answered_at IS NOT NULL), 0)::int  AS longest_seconds,
+        COALESCE(round(avg(duration) FILTER (WHERE answered_at IS NOT NULL)), 0)::int AS average_seconds,
+        -- Billing counts only calls that finished cleanly, so this can be lower than total_seconds.
+        -- Surfacing both stops the client reconciling their usage against an invoice and finding
+        -- a gap they cannot explain.
+        COALESCE(sum(duration) FILTER (WHERE status = 'completed'), 0)::int  AS billable_seconds
       FROM api_calls
       WHERE tenant_id = $1 ${where}
     `, [req.tenantId, ...params]);
@@ -212,6 +222,7 @@ router.get('/reports/summary', async (req, res) => {
       calls: {
         total: r.total,
         answered: r.answered,
+        completed: r.completed,
         busy: r.busy,
         no_answer: r.no_answer,
         failed: r.failed,
@@ -225,9 +236,10 @@ router.get('/reports/summary', async (req, res) => {
         total_seconds: r.total_seconds,
         total_minutes: Math.round((r.total_seconds / 60) * 10) / 10,
         average_seconds: r.average_seconds,
-        longest_seconds: r.longest_seconds
+        longest_seconds: r.longest_seconds,
+        billable_seconds: r.billable_seconds
       },
-      note: 'All durations are connected talk time, measured from answer to hang-up. Ringing time is excluded, and calls that were never answered count as zero.'
+      note: 'Durations are connected talk time, measured from the moment the callee answered to the moment the call ended. Ringing is never included, and a call that was never answered counts as zero. "answered" means the callee picked up, however the call later ended; "billable_seconds" counts only calls that finished cleanly and may therefore be lower than total_seconds.'
     });
   } catch (err) {
     console.error('[PublicApi] GET /reports/summary failed:', err.message);
