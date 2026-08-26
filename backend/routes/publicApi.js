@@ -119,6 +119,122 @@ router.post('/calls', async (req, res) => {
   }
 });
 
+// Shared date-range handling for the reporting endpoints. Both bounds are optional; `to` is
+// treated as end-of-day so a single-day range (from = to) still matches everything in it, which
+// is what someone asking for "today" means.
+function dateRange(query) {
+  const params = [];
+  let where = '';
+  if (query.from) { params.push(query.from); where += ` AND created_at >= $${params.length + 1}::date`; }
+  if (query.to)   { params.push(query.to);   where += ` AND created_at < ($${params.length + 1}::date + interval '1 day')`; }
+  return { where, params };
+}
+
+/**
+ * GET /api/v1/calls - list calls, newest first.
+ *
+ * Filters: from, to (YYYY-MM-DD), status. Paginated with limit/offset.
+ *
+ * `duration` here - and everywhere in this API - is CONNECTED time only, measured from the
+ * moment the callee answered to the moment the call ended. Ringing time is not included, and a
+ * call that was never answered has a duration of zero rather than the time it spent ringing.
+ */
+router.get('/calls', async (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 500);
+  const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+  const { where, params } = dateRange(req.query);
+
+  const filters = [...params];
+  let statusFilter = '';
+  if (req.query.status) {
+    filters.push(req.query.status);
+    statusFilter = ` AND status = $${filters.length + 1}`;
+  }
+
+  try {
+    const rows = await pool.query(`
+      SELECT id AS call_id, to_number AS "to", from_number AS "from", status, duration,
+             hangup_cause, created_at, answered_at, ended_at
+        FROM api_calls
+       WHERE tenant_id = $1 ${where} ${statusFilter}
+       ORDER BY created_at DESC
+       LIMIT ${limit} OFFSET ${offset}
+    `, [req.tenantId, ...filters]);
+
+    const count = await pool.query(
+      `SELECT count(*)::int AS n FROM api_calls WHERE tenant_id = $1 ${where} ${statusFilter}`,
+      [req.tenantId, ...filters]
+    );
+
+    res.json({
+      total: count.rows[0].n,
+      limit,
+      offset,
+      calls: rows.rows
+    });
+  } catch (err) {
+    console.error('[PublicApi] GET /calls failed:', err.message);
+    res.status(500).json({ error: 'Failed to list calls' });
+  }
+});
+
+/**
+ * GET /api/v1/reports/summary - totals for a period.
+ *
+ * Answers the two questions a client actually asks at the end of a month: how many calls did we
+ * place, and how long were we actually talking to people.
+ */
+router.get('/reports/summary', async (req, res) => {
+  const { where, params } = dateRange(req.query);
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        count(*)::int                                                       AS total,
+        count(*) FILTER (WHERE status = 'completed')::int                   AS answered,
+        count(*) FILTER (WHERE status = 'busy')::int                        AS busy,
+        count(*) FILTER (WHERE status = 'no-answer')::int                   AS no_answer,
+        count(*) FILTER (WHERE status = 'failed')::int                      AS failed,
+        count(*) FILTER (WHERE status IN ('queued','answered'))::int        AS in_progress,
+        -- Every duration below is connected time only. A call that never connected contributes
+        -- zero, so these totals can never be inflated by ringing.
+        COALESCE(sum(duration) FILTER (WHERE status = 'completed'), 0)::int  AS total_seconds,
+        COALESCE(max(duration) FILTER (WHERE status = 'completed'), 0)::int  AS longest_seconds,
+        COALESCE(round(avg(duration) FILTER (WHERE status = 'completed')), 0)::int AS average_seconds
+      FROM api_calls
+      WHERE tenant_id = $1 ${where}
+    `, [req.tenantId, ...params]);
+
+    const r = rows[0];
+    const attempted = r.total - r.in_progress;
+
+    res.json({
+      period: { from: req.query.from || null, to: req.query.to || null },
+      calls: {
+        total: r.total,
+        answered: r.answered,
+        busy: r.busy,
+        no_answer: r.no_answer,
+        failed: r.failed,
+        in_progress: r.in_progress
+      },
+      // Share of finished attempts that were actually answered - the number that tells you
+      // whether a list is any good. Calls still in progress are excluded so it does not dip
+      // while a batch is running.
+      answer_rate: attempted > 0 ? Math.round((r.answered / attempted) * 1000) / 1000 : null,
+      talk_time: {
+        total_seconds: r.total_seconds,
+        total_minutes: Math.round((r.total_seconds / 60) * 10) / 10,
+        average_seconds: r.average_seconds,
+        longest_seconds: r.longest_seconds
+      },
+      note: 'All durations are connected talk time, measured from answer to hang-up. Ringing time is excluded, and calls that were never answered count as zero.'
+    });
+  } catch (err) {
+    console.error('[PublicApi] GET /reports/summary failed:', err.message);
+    res.status(500).json({ error: 'Failed to build summary' });
+  }
+});
+
 /**
  * GET /api/v1/calls/:id - outcome of one call.
  *
